@@ -7,7 +7,7 @@ import {
   Calendar, 
   FileText, 
   Bell, 
-  Chat,
+  MessageCircle,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -22,7 +22,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
   const getMenuItems = () => {
     const commonItems = [
       { id: 'social', label: 'Rede Social', icon: ImageIcon },
-      { id: 'messages', label: 'Mensagens', icon: Chat },
+      { id: 'messages', label: 'Mensagens', icon: MessageCircle },
     ];
 
     switch (user?.level) {
