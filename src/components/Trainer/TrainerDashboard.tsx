@@ -1,10 +1,10 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Users, Calendar, FileText, Bell } from 'lucide-react';
+import AIChat from './AIChat';
 
 const TrainerDashboard = () => {
   const students = [
@@ -128,6 +128,11 @@ const TrainerDashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Chat com IA */}
+        <AIChat />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tarefas Pendentes */}
         <Card>
           <CardHeader>
@@ -154,33 +159,33 @@ const TrainerDashboard = () => {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Templates Rápidos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <FileText className="mr-2 h-5 w-5 text-purple-500" />
-            Ações Rápidas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button variant="outline" className="h-20 flex flex-col">
-              <Calendar className="h-6 w-6 mb-2" />
-              Criar Treino
-            </Button>
-            <Button variant="outline" className="h-20 flex flex-col">
-              <FileText className="h-6 w-6 mb-2" />
-              Criar Dieta
-            </Button>
-            <Button variant="outline" className="h-20 flex flex-col">
-              <Users className="h-6 w-6 mb-2" />
-              Enviar Feedback
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Templates Rápidos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <FileText className="mr-2 h-5 w-5 text-purple-500" />
+              Ações Rápidas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Button variant="outline" className="h-20 flex flex-col">
+                <Calendar className="h-6 w-6 mb-2" />
+                Criar Treino
+              </Button>
+              <Button variant="outline" className="h-20 flex flex-col">
+                <FileText className="h-6 w-6 mb-2" />
+                Criar Dieta
+              </Button>
+              <Button variant="outline" className="h-20 flex flex-col">
+                <Users className="h-6 w-6 mb-2" />
+                Enviar Feedback
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
