@@ -13,6 +13,22 @@ const Index = () => {
   const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
 
+  const getDefaultTab = () => {
+    switch (user?.level) {
+      case 1: return 'social';
+      case 2: return 'students';
+      case 3: return 'dashboard';
+      default: return 'social';
+    }
+  };
+
+  // Move useEffect to the top, before any conditional returns
+  React.useEffect(() => {
+    if (user) {
+      setActiveTab(getDefaultTab());
+    }
+  }, [user?.level]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center">
@@ -29,15 +45,6 @@ const Index = () => {
   if (!user) {
     return <LoginForm />;
   }
-
-  const getDefaultTab = () => {
-    switch (user.level) {
-      case 1: return 'social';
-      case 2: return 'students';
-      case 3: return 'dashboard';
-      default: return 'social';
-    }
-  };
 
   const renderContent = () => {
     if (activeTab === 'social') return <SocialFeed />;
@@ -71,10 +78,6 @@ const Index = () => {
         return <div className="p-6"><h2>Conteúdo não encontrado</h2></div>;
     }
   };
-
-  React.useEffect(() => {
-    setActiveTab(getDefaultTab());
-  }, [user.level]);
 
   return (
     <div className="min-h-screen bg-gray-50">
