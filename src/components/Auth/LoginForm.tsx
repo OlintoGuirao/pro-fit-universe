@@ -42,44 +42,46 @@ const LoginForm = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-sm sm:max-w-md space-y-4 sm:space-y-6">
         <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mb-4">
-            <span className="text-white text-2xl">💪</span>
+          <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mb-4">
+            <span className="text-white text-lg sm:text-2xl">💪</span>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
             FitConnect
           </h1>
-          <p className="text-gray-600 mt-2">Entre na sua conta para continuar</p>
+          <p className="text-gray-600 mt-2 text-sm sm:text-base">Entre na sua conta para continuar</p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Login</CardTitle>
-            <CardDescription>
+        <Card className="shadow-lg">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg sm:text-xl">Login</CardTitle>
+            <CardDescription className="text-sm">
               Acesse sua conta com email e senha
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-sm">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  className="h-10"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password" className="text-sm">Senha</Label>
                 <Input
                   id="password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  className="h-10"
                 />
               </div>
               {error && (
@@ -87,7 +89,7 @@ const LoginForm = () => {
               )}
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 h-10"
                 disabled={isLoading}
               >
                 {isLoading ? 'Entrando...' : 'Entrar'}
@@ -99,7 +101,7 @@ const LoginForm = () => {
                 Não tem uma conta?{' '}
                 <Button 
                   variant="link" 
-                  className="p-0 h-auto text-purple-600 hover:text-purple-700"
+                  className="p-0 h-auto text-purple-600 hover:text-purple-700 text-sm"
                   onClick={() => setShowRegister(true)}
                 >
                   Cadastre-se aqui
@@ -109,8 +111,8 @@ const LoginForm = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card className="shadow-lg">
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm">Contas de Demo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -119,14 +121,14 @@ const LoginForm = () => {
                 key={index}
                 variant="outline"
                 size="sm"
-                className="w-full text-left justify-start"
+                className="w-full text-left justify-start h-auto py-2 px-3"
                 onClick={() => {
                   setEmail(account.email);
                   setPassword(account.password);
                 }}
               >
-                <div>
-                  <div className="font-medium">{account.role}</div>
+                <div className="text-left">
+                  <div className="font-medium text-sm">{account.role}</div>
                   <div className="text-xs text-gray-500">{account.email}</div>
                 </div>
               </Button>
