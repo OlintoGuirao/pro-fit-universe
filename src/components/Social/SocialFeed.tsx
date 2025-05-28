@@ -9,8 +9,7 @@ import { createPost, subscribeToPosts, likePost, addComment } from '@/lib/db/que
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Heart, MessageCircle, Share2, Image as ImageIcon, Video, X, Camera } from 'lucide-react';
-import { storage } from '@/lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToCloudinary } from '@/lib/cloudinary';
 import { Timestamp } from 'firebase/firestore';
 
 const SocialFeed = () => {
@@ -70,13 +69,41 @@ const SocialFeed = () => {
   };
 
   const uploadFiles = async (files: File[]): Promise<string[]> => {
+    if (!user?.id) {
+      throw new Error('Usuário não autenticado');
+    }
+
     const uploadPromises = files.map(async (file) => {
-      const storageRef = ref(storage, `posts/${user?.uid}/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      return getDownloadURL(storageRef);
+      try {
+        console.log('Iniciando upload do arquivo:', {
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        });
+
+        const url = await uploadToCloudinary(file);
+        console.log('Upload concluído:', url);
+        
+        return url;
+      } catch (error) {
+        console.error('Erro detalhado no upload:', {
+          error,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size
+        });
+        throw new Error(`Falha no upload do arquivo ${file.name}: ${error.message}`);
+      }
     });
 
-    return Promise.all(uploadPromises);
+    try {
+      const urls = await Promise.all(uploadPromises);
+      console.log('Todos os uploads concluídos com sucesso:', urls);
+      return urls;
+    } catch (error) {
+      console.error('Erro no upload de arquivos:', error);
+      throw error;
+    }
   };
 
   const handleCreatePost = async () => {
@@ -87,9 +114,22 @@ const SocialFeed = () => {
       let mediaUrls: string[] = [];
       
       if (selectedFiles.length > 0) {
-        mediaUrls = await uploadFiles(selectedFiles);
+        try {
+          console.log('Iniciando upload de arquivos...', {
+            fileCount: selectedFiles.length,
+            fileTypes: selectedFiles.map(f => f.type),
+            fileSizes: selectedFiles.map(f => f.size)
+          });
+          mediaUrls = await uploadFiles(selectedFiles);
+          console.log('Uploads concluídos:', mediaUrls);
+        } catch (error) {
+          console.error('Erro no upload:', error);
+          alert(`Erro ao fazer upload dos arquivos: ${error.message}`);
+          return;
+        }
       }
 
+      console.log('Criando post com mídias:', mediaUrls);
       await createPost(
         user.id,
         newPost,
@@ -102,7 +142,7 @@ const SocialFeed = () => {
       setSelectedFiles([]);
     } catch (error) {
       console.error('Erro ao criar post:', error);
-      alert('Erro ao criar post. Tente novamente.');
+      alert(`Erro ao criar post: ${error.message}`);
     } finally {
       setUploading(false);
     }
@@ -322,47 +362,52 @@ const SocialFeed = () => {
               </div>
             )}
 
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  id="media-upload"
-                  multiple
-                  accept="image/*,video/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  id="camera-capture"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleCameraCapture}
-                  className="hidden"
-                />
-                <label htmlFor="media-upload" className="flex-1 sm:flex-none">
-                  <Button type="button" variant="outline" className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs sm:text-sm">
-                    <ImageIcon className="w-4 h-4" />
-                    Adicionar Mídia
-                  </Button>
-                </label>
-                <label htmlFor="camera-capture" className="flex-1 sm:flex-none">
-                  <Button type="button" variant="outline" className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs sm:text-sm">
-                    <Camera className="w-4 h-4" />
-                    Tirar Foto
-                  </Button>
-                </label>
-              </div>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <input
+                ref={fileInputRef}
+                type="file"
+                id="media-upload"
+                multiple
+                accept="image/*,video/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                id="camera-capture"
+                accept="image/*"
+                capture="environment"
+                onChange={handleCameraCapture}
+                className="hidden"
+              />
               <Button 
-                onClick={handleCreatePost}
-                disabled={(!newPost.trim() && selectedFiles.length === 0) || uploading}
-                className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-xs sm:text-sm"
+                type="button" 
+                variant="outline" 
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-xs sm:text-sm"
+                onClick={() => fileInputRef.current?.click()}
               >
-                {uploading ? 'Publicando...' : 'Publicar'}
+                <ImageIcon className="w-4 h-4" />
+                Adicionar Mídia
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-xs sm:text-sm"
+                onClick={() => cameraInputRef.current?.click()}
+              >
+                <Camera className="w-4 h-4" />
+                Tirar Foto
               </Button>
             </div>
+
+            <Button 
+              onClick={handleCreatePost}
+              disabled={(!newPost.trim() && selectedFiles.length === 0) || uploading}
+              className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-xs sm:text-sm"
+            >
+              {uploading ? 'Publicando...' : 'Publicar'}
+            </Button>
           </div>
         </CardContent>
       </Card>
