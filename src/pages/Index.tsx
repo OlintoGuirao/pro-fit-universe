@@ -7,6 +7,9 @@ import StudentDashboard from '@/components/Student/StudentDashboard';
 import TrainerDashboard from '@/components/Trainer/TrainerDashboard';
 import AdminDashboard from '@/components/Admin/AdminDashboard';
 import SocialFeed from '@/components/Social/SocialFeed';
+import ProgressPage from './Progress';
+import Workout from './Workout';
+import Messages from './Messages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const Index = () => {
@@ -63,10 +66,9 @@ const Index = () => {
     switch (user.level) {
       case 1: // Aluno
         switch (activeTab) {
-          case 'workout': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Meu Treino</h2></div>;
-          case 'diet': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Minha Dieta</h2></div>;
-          case 'progress': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Meu Progresso</h2></div>;
-          case 'messages': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Mensagens</h2></div>;
+          case 'workout': return <Workout />;
+          case 'progress': return <ProgressPage />;
+          case 'messages': return <Messages />;
           default: return <StudentDashboard />;
         }
       case 2: // Professor
@@ -74,7 +76,7 @@ const Index = () => {
           case 'students': return <TrainerDashboard />;
           case 'templates': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Modelos de Treino</h2></div>;
           case 'schedule': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Agenda</h2></div>;
-          case 'messages': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Mensagens</h2></div>;
+          case 'messages': return <Messages />;
           default: return <TrainerDashboard />;
         }
       case 3: // Admin
