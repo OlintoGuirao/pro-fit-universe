@@ -49,5 +49,18 @@ service cloud.firestore {
       allow update: if isAuthenticated();
       allow delete: if isAdmin();
     }
+
+    // Regras para a coleção posts
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        isOwner(resource.data.authorId) ||
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['likes', 'comments'])
+      );
+      allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.authorId));
+    }
   }
 } 

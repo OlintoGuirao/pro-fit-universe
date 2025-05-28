@@ -1,63 +1,71 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
+import { createPost, subscribeToPosts, likePost, addComment } from '@/lib/db/queries';
+import { formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const SocialFeed = () => {
   const { user } = useAuth();
   const [newPost, setNewPost] = useState('');
+  const [posts, setPosts] = useState<any[]>([]);
+  const [selectedType, setSelectedType] = useState<'progress' | 'workout' | 'diet' | 'general'>('general');
+  const [loading, setLoading] = useState(true);
 
-  const posts = [
-    {
-      id: '1',
-      authorName: 'João Silva',
-      authorRole: 'Aluno',
-      content: 'Terminei meu treino de pernas hoje! 🦵💪 Consegui aumentar 5kg no leg press!',
-      likes: 12,
-      comments: 3,
-      time: '2h atrás',
-      type: 'progress',
-      image: null
-    },
-    {
-      id: '2',
-      authorName: 'Maria Personal',
-      authorRole: 'Personal Trainer',
-      content: 'Dica do dia: Sempre se aqueça antes do treino! 5-10 minutos de aquecimento podem prevenir lesões e melhorar seu desempenho.',
-      likes: 28,
-      comments: 8,
-      time: '4h atrás',
-      type: 'tip'
-    },
-    {
-      id: '3',
-      authorName: 'Ana Costa',
-      authorRole: 'Aluna',
-      content: 'Primeira semana de dieta concluída! Perdi 1kg e estou me sentindo muito mais disposta. Obrigada @maria.personal pelas dicas! 🙏',
-      likes: 15,
-      comments: 5,
-      time: '6h atrás',
-      type: 'progress'
-    }
-  ];
+  useEffect(() => {
+    if (!user) return;
 
-  const handlePost = () => {
-    if (newPost.trim()) {
-      // Lógica para enviar post
-      console.log('Novo post:', newPost);
+    const unsubscribe = subscribeToPosts((updatedPosts) => {
+      setPosts(updatedPosts);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handlePost = async () => {
+    if (!newPost.trim() || !user) return;
+
+    try {
+      await createPost(user.id, newPost, selectedType);
       setNewPost('');
+    } catch (error) {
+      console.error('Erro ao criar post:', error);
+      alert('Erro ao criar post. Tente novamente.');
+    }
+  };
+
+  const handleLike = async (postId: string) => {
+    if (!user) return;
+
+    try {
+      await likePost(postId, user.id);
+    } catch (error) {
+      console.error('Erro ao curtir post:', error);
+      alert('Erro ao curtir post. Tente novamente.');
+    }
+  };
+
+  const handleComment = async (postId: string, content: string) => {
+    if (!user || !content.trim()) return;
+
+    try {
+      await addComment(postId, user.id, content);
+    } catch (error) {
+      console.error('Erro ao adicionar comentário:', error);
+      alert('Erro ao adicionar comentário. Tente novamente.');
     }
   };
 
   const getPostTypeColor = (type: string) => {
     switch (type) {
       case 'progress': return 'bg-green-100 text-green-800';
-      case 'tip': return 'bg-blue-100 text-blue-800';
       case 'workout': return 'bg-purple-100 text-purple-800';
+      case 'diet': return 'bg-blue-100 text-blue-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -65,11 +73,22 @@ const SocialFeed = () => {
   const getPostTypeLabel = (type: string) => {
     switch (type) {
       case 'progress': return 'Progresso';
-      case 'tip': return 'Dica';
       case 'workout': return 'Treino';
+      case 'diet': return 'Dieta';
       default: return 'Geral';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6 max-w-2xl mx-auto">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 p-6 max-w-2xl mx-auto">
@@ -83,6 +102,7 @@ const SocialFeed = () => {
         <CardHeader>
           <div className="flex items-center space-x-3">
             <Avatar>
+              <AvatarImage src={user?.avatar} />
               <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
                 {user?.name.charAt(0)}
               </AvatarFallback>
@@ -101,6 +121,36 @@ const SocialFeed = () => {
               onChange={(e) => setNewPost(e.target.value)}
               className="min-h-[100px]"
             />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant={selectedType === 'progress' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedType('progress')}
+              >
+                Progresso
+              </Button>
+              <Button
+                variant={selectedType === 'workout' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedType('workout')}
+              >
+                Treino
+              </Button>
+              <Button
+                variant={selectedType === 'diet' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedType('diet')}
+              >
+                Dieta
+              </Button>
+              <Button
+                variant={selectedType === 'general' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedType('general')}
+              >
+                Geral
+              </Button>
+            </div>
             <div className="flex justify-between items-center">
               <div className="flex space-x-2">
                 <Button variant="outline" size="sm">📸 Foto</Button>
@@ -126,6 +176,7 @@ const SocialFeed = () => {
               <div className="flex items-start justify-between">
                 <div className="flex items-center space-x-3">
                   <Avatar>
+                    <AvatarImage src={post.authorAvatar} />
                     <AvatarFallback>{post.authorName.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div>
@@ -135,7 +186,9 @@ const SocialFeed = () => {
                         {post.authorRole}
                       </Badge>
                     </div>
-                    <p className="text-sm text-gray-500">{post.time}</p>
+                    <p className="text-sm text-gray-500">
+                      {formatDistanceToNow(post.createdAt, { addSuffix: true, locale: ptBR })}
+                    </p>
                   </div>
                 </div>
                 <Badge className={getPostTypeColor(post.type)}>
@@ -146,27 +199,57 @@ const SocialFeed = () => {
             <CardContent>
               <p className="text-gray-800 mb-4">{post.content}</p>
               
-              {post.image && (
-                <div className="mb-4">
-                  <img 
-                    src={post.image} 
-                    alt="Post content" 
-                    className="rounded-lg max-w-full h-auto"
-                  />
+              {post.images && post.images.length > 0 && (
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  {post.images.map((image: string, index: number) => (
+                    <img 
+                      key={index}
+                      src={image} 
+                      alt={`Post content ${index + 1}`} 
+                      className="rounded-lg w-full h-48 object-cover"
+                    />
+                  ))}
                 </div>
               )}
 
               <div className="flex items-center space-x-6 pt-4 border-t">
-                <Button variant="ghost" size="sm" className="text-gray-500 hover:text-red-500">
-                  ❤️ {post.likes}
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className={`text-gray-500 hover:text-red-500 ${post.likes.includes(user?.id) ? 'text-red-500' : ''}`}
+                  onClick={() => handleLike(post.id)}
+                >
+                  ❤️ {post.likes.length}
                 </Button>
                 <Button variant="ghost" size="sm" className="text-gray-500 hover:text-blue-500">
-                  💬 {post.comments}
+                  💬 {post.comments.length}
                 </Button>
                 <Button variant="ghost" size="sm" className="text-gray-500 hover:text-green-500">
                   📤 Compartilhar
                 </Button>
               </div>
+
+              {/* Comentários */}
+              {post.comments.length > 0 && (
+                <div className="mt-4 space-y-4">
+                  {post.comments.map((comment: any) => (
+                    <div key={comment.id} className="flex space-x-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>{comment.authorName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium text-sm">{comment.authorName}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatDistanceToNow(comment.createdAt.toDate(), { addSuffix: true, locale: ptBR })}
+                          </p>
+                        </div>
+                        <p className="text-sm text-gray-800 mt-1">{comment.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}

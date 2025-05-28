@@ -300,4 +300,144 @@ export function subscribeToMessages(userId1: string, userId2: string, callback: 
 
     callback(filteredMessages);
   });
+}
+
+// Funções para o Feed Social
+export async function createPost(authorId: string, content: string, type: 'progress' | 'workout' | 'diet' | 'general', images?: string[], videos?: string[]) {
+  try {
+    const postsRef = collection(db, 'posts');
+    const postData = {
+      authorId,
+      content,
+      type,
+      images: images || [],
+      videos: videos || [],
+      likes: [],
+      comments: [],
+      createdAt: Timestamp.now()
+    };
+
+    const docRef = await addDoc(postsRef, postData);
+    return {
+      id: docRef.id,
+      ...postData
+    };
+  } catch (error) {
+    console.error('Erro ao criar post:', error);
+    throw error;
+  }
+}
+
+export async function getPosts() {
+  try {
+    const postsRef = collection(db, 'posts');
+    const q = query(postsRef, orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    
+    const posts = await Promise.all(snapshot.docs.map(async docSnapshot => {
+      const postData = docSnapshot.data();
+      const authorDocRef = doc(db, 'users', postData.authorId);
+      const authorDoc = await getDoc(authorDocRef);
+      const authorData = authorDoc.data();
+      
+      return {
+        id: docSnapshot.id,
+        ...postData,
+        authorName: authorData?.name || 'Usuário',
+        authorAvatar: authorData?.avatar,
+        authorRole: authorData?.level === 1 ? 'Aluno' : authorData?.level === 2 ? 'Professor' : 'Admin',
+        createdAt: postData.createdAt?.toDate()
+      };
+    }));
+
+    return posts;
+  } catch (error) {
+    console.error('Erro ao buscar posts:', error);
+    throw error;
+  }
+}
+
+export function subscribeToPosts(callback: (posts: any[]) => void) {
+  const postsRef = collection(db, 'posts');
+  const q = query(postsRef, orderBy('createdAt', 'desc'));
+
+  return onSnapshot(q, async (snapshot) => {
+    const posts = await Promise.all(snapshot.docs.map(async docSnapshot => {
+      const postData = docSnapshot.data();
+      const authorDocRef = doc(db, 'users', postData.authorId);
+      const authorDoc = await getDoc(authorDocRef);
+      const authorData = authorDoc.data();
+      
+      return {
+        id: docSnapshot.id,
+        ...postData,
+        authorName: authorData?.name || 'Usuário',
+        authorAvatar: authorData?.avatar,
+        authorRole: authorData?.level === 1 ? 'Aluno' : authorData?.level === 2 ? 'Professor' : 'Admin',
+        createdAt: postData.createdAt?.toDate()
+      };
+    }));
+
+    callback(posts);
+  });
+}
+
+export async function likePost(postId: string, userId: string) {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    const postDoc = await getDoc(postRef);
+    
+    if (!postDoc.exists()) {
+      throw new Error('Post não encontrado');
+    }
+
+    const postData = postDoc.data();
+    const likes = postData.likes || [];
+    
+    if (likes.includes(userId)) {
+      // Remove o like se o usuário já curtiu
+      await updateDoc(postRef, {
+        likes: likes.filter((id: string) => id !== userId)
+      });
+    } else {
+      // Adiciona o like se o usuário ainda não curtiu
+      await updateDoc(postRef, {
+        likes: arrayUnion(userId)
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao curtir post:', error);
+    throw error;
+  }
+}
+
+export async function addComment(postId: string, authorId: string, content: string) {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    const postDoc = await getDoc(postRef);
+    
+    if (!postDoc.exists()) {
+      throw new Error('Post não encontrado');
+    }
+
+    const authorDoc = await getDoc(doc(db, 'users', authorId));
+    const authorData = authorDoc.data();
+
+    const comment = {
+      id: crypto.randomUUID(),
+      authorId,
+      authorName: authorData?.name || 'Usuário',
+      content,
+      createdAt: Timestamp.now()
+    };
+
+    await updateDoc(postRef, {
+      comments: arrayUnion(comment)
+    });
+
+    return comment;
+  } catch (error) {
+    console.error('Erro ao adicionar comentário:', error);
+    throw error;
+  }
 } 
