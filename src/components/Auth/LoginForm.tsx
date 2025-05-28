@@ -24,11 +24,24 @@ const LoginForm = () => {
     setIsLoading(true);
     setError('');
 
+    console.log('Tentando fazer login com:', email);
+
     try {
       await login(email, password);
+      console.log('Login realizado com sucesso');
     } catch (err: any) {
       console.error('Erro no login:', err);
-      setError('Email ou senha inválidos');
+      let errorMessage = 'Erro ao fazer login';
+      
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+        errorMessage = 'Email ou senha inválidos';
+      } else if (err.code === 'auth/too-many-requests') {
+        errorMessage = 'Muitas tentativas. Tente novamente mais tarde';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -39,6 +52,25 @@ const LoginForm = () => {
     { email: 'professor@test.com', role: 'Personal Trainer', password: '123456' },
     { email: 'admin@test.com', role: 'Administrador', password: '123456' }
   ];
+
+  const handleDemoLogin = async (demoEmail: string, demoPassword: string) => {
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+    
+    // Fazer login automaticamente
+    setIsLoading(true);
+    setError('');
+
+    try {
+      await login(demoEmail, demoPassword);
+      console.log('Demo login realizado com sucesso');
+    } catch (err: any) {
+      console.error('Erro no demo login:', err);
+      setError('Erro ao fazer login com conta demo');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
@@ -122,10 +154,8 @@ const LoginForm = () => {
                 variant="outline"
                 size="sm"
                 className="w-full text-left justify-start h-auto py-2 px-3"
-                onClick={() => {
-                  setEmail(account.email);
-                  setPassword(account.password);
-                }}
+                onClick={() => handleDemoLogin(account.email, account.password)}
+                disabled={isLoading}
               >
                 <div className="text-left">
                   <div className="font-medium text-sm">{account.role}</div>
