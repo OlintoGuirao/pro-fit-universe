@@ -13,6 +13,7 @@ import {
   LogOut,
   UserPlus,
   CreditCard,
+  Utensils,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '@/lib/firebase';
@@ -62,6 +63,14 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
       >
         <Dumbbell className="mr-2 h-4 w-4" />
         Treinos
+      </Button>
+      <Button
+        variant={activeTab === 'diet' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('diet')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Utensils className="mr-2 h-4 w-4" />
+        Dieta
       </Button>
       <Button
         variant={activeTab === 'progress' ? 'default' : 'ghost'}
