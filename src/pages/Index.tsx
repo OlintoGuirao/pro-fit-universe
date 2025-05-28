@@ -11,6 +11,7 @@ import ProgressPage from './Progress';
 import Workout from './Workout';
 import Messages from './Messages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Users from './Users';
 
 const Index = () => {
   const { user, isLoading } = useAuth();
@@ -83,8 +84,9 @@ const Index = () => {
         switch (activeTab) {
           case 'dashboard': return <AdminDashboard />;
           case 'trainers': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Gerenciar Professores</h2></div>;
-          case 'users': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Gerenciar Usuários</h2></div>;
+          case 'users': return <Users />;
           case 'plans': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Planos e Pagamentos</h2></div>;
+          case 'messages': return <Messages />;
           default: return <AdminDashboard />;
         }
       default:

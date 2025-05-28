@@ -1,128 +1,195 @@
-
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { 
-  Users, 
-  Calendar, 
-  FileText, 
-  Bell, 
-  MessageCircle,
-  Image as ImageIcon,
-  X
+import {
+  Home,
+  Dumbbell,
+  LineChart,
+  MessageSquare,
+  Users,
+  Calendar,
+  FileText,
+  Settings,
+  LogOut,
+  UserPlus,
+  CreditCard,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  sidebarOpen?: boolean;
-  setSidebarOpen?: (open: boolean) => void;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-  activeTab, 
-  setActiveTab, 
-  sidebarOpen = true, 
-  setSidebarOpen 
-}) => {
+const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
-  const getMenuItems = () => {
-    const commonItems = [
-      { id: 'social', label: 'Rede Social', icon: ImageIcon },
-      { id: 'messages', label: 'Mensagens', icon: MessageCircle },
-    ];
-
-    switch (user?.level) {
-      case 1: // Aluno
-        return [
-          ...commonItems,
-          { id: 'workout', label: 'Meu Treino', icon: Calendar },
-          { id: 'diet', label: 'Minha Dieta', icon: FileText },
-          { id: 'progress', label: 'Progresso', icon: Users },
-        ];
-      case 2: // Professor
-        return [
-          ...commonItems,
-          { id: 'students', label: 'Alunos', icon: Users },
-          { id: 'templates', label: 'Modelos', icon: FileText },
-          { id: 'schedule', label: 'Agenda', icon: Calendar },
-        ];
-      case 3: // Admin
-        return [
-          { id: 'dashboard', label: 'Dashboard', icon: Users },
-          { id: 'trainers', label: 'Professores', icon: Users },
-          { id: 'users', label: 'Usuários', icon: Users },
-          { id: 'plans', label: 'Planos', icon: FileText },
-        ];
-      default:
-        return commonItems;
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/');
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
     }
   };
 
-  const menuItems = getMenuItems();
-
-  const handleItemClick = (itemId: string) => {
-    setActiveTab(itemId);
-    // Auto-close sidebar on mobile after selection
-    if (window.innerWidth < 1024) {
-      setSidebarOpen?.(false);
-    }
+  const handleTabClick = (tab: string) => {
+    setActiveTab(tab);
+    setSidebarOpen(false); // Fecha o menu em todas as resoluções
   };
+
+  if (!user) return null;
+
+  const renderStudentButtons = () => (
+    <>
+      <Button
+        variant={activeTab === 'social' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('social')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Home className="mr-2 h-4 w-4" />
+        Feed Social
+      </Button>
+      <Button
+        variant={activeTab === 'workout' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('workout')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Dumbbell className="mr-2 h-4 w-4" />
+        Treinos
+      </Button>
+      <Button
+        variant={activeTab === 'progress' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('progress')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <LineChart className="mr-2 h-4 w-4" />
+        Progresso
+      </Button>
+      <Button
+        variant={activeTab === 'messages' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('messages')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <MessageSquare className="mr-2 h-4 w-4" />
+        Mensagens
+      </Button>
+    </>
+  );
+
+  const renderTrainerButtons = () => (
+    <>
+      <Button
+        variant={activeTab === 'students' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('students')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Users className="mr-2 h-4 w-4" />
+        Meus Alunos
+      </Button>
+      <Button
+        variant={activeTab === 'templates' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('templates')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <FileText className="mr-2 h-4 w-4" />
+        Modelos de Treino
+      </Button>
+      <Button
+        variant={activeTab === 'schedule' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('schedule')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Calendar className="mr-2 h-4 w-4" />
+        Agenda
+      </Button>
+      <Button
+        variant={activeTab === 'messages' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('messages')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <MessageSquare className="mr-2 h-4 w-4" />
+        Mensagens
+      </Button>
+    </>
+  );
+
+  const renderAdminButtons = () => (
+    <>
+      <Button
+        variant={activeTab === 'dashboard' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('dashboard')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Home className="mr-2 h-4 w-4" />
+        Dashboard
+      </Button>
+      <Button
+        variant={activeTab === 'trainers' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('trainers')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <UserPlus className="mr-2 h-4 w-4" />
+        Gerenciar Professores
+      </Button>
+      <Button
+        variant={activeTab === 'users' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('users')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Users className="mr-2 h-4 w-4" />
+        Usuários
+      </Button>
+      <Button
+        variant={activeTab === 'plans' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('plans')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <CreditCard className="mr-2 h-4 w-4" />
+        Planos e Pagamentos
+      </Button>
+      <Button
+        variant={activeTab === 'messages' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('messages')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <MessageSquare className="mr-2 h-4 w-4" />
+        Mensagens
+      </Button>
+    </>
+  );
 
   return (
-    <>
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen?.(false)}
-        />
-      )}
-      
-      {/* Sidebar */}
-      <div className={`
-        fixed lg:static inset-y-0 left-0 z-50 lg:z-auto
-        w-64 bg-white shadow-lg border-r border-gray-200
-        transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        lg:block
-      `}>
-        {/* Mobile close button */}
-        <div className="flex justify-end p-4 lg:hidden">
+    <aside
+      className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-200 ease-in-out ${
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+      <div className="flex flex-col h-full">
+        <div className="flex-1 overflow-y-auto py-4">
+          <div className="px-4 space-y-2">
+            {user.level === 1 && renderStudentButtons()}
+            {user.level === 2 && renderTrainerButtons()}
+            {user.level === 3 && renderAdminButtons()}
+          </div>
+        </div>
+        <div className="p-4 border-t">
           <Button
             variant="ghost"
-            size="sm"
-            onClick={() => setSidebarOpen?.(false)}
+            onClick={handleLogout}
+            className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
           >
-            <X className="h-5 w-5" />
+            <LogOut className="mr-2 h-4 w-4" />
+            Sair
           </Button>
         </div>
-
-        <div className="px-4 pb-4 lg:p-4">
-          <nav className="space-y-1 sm:space-y-2">
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Button
-                  key={item.id}
-                  variant={activeTab === item.id ? "default" : "ghost"}
-                  className={`w-full justify-start text-sm sm:text-base py-2 sm:py-3 ${
-                    activeTab === item.id 
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white' 
-                      : 'hover:bg-gray-100'
-                  }`}
-                  onClick={() => handleItemClick(item.id)}
-                >
-                  <Icon className="mr-2 h-4 w-4" />
-                  {item.label}
-                </Button>
-              );
-            })}
-          </nav>
-        </div>
       </div>
-    </>
+    </aside>
   );
 };
 

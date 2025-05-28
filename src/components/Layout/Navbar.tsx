@@ -14,11 +14,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 interface NavbarProps {
-  sidebarOpen?: boolean;
-  setSidebarOpen?: (open: boolean) => void;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
+const Navbar = ({ sidebarOpen, setSidebarOpen }: NavbarProps) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -45,12 +45,11 @@ const Navbar: React.FC<NavbarProps> = ({ sidebarOpen, setSidebarOpen }) => {
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14 sm:h-16">
           <div className="flex items-center">
-            {/* Mobile menu button */}
             <Button
               variant="ghost"
               size="sm"
-              className="lg:hidden mr-2"
-              onClick={() => setSidebarOpen?.(!sidebarOpen)}
+              className="mr-2"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>

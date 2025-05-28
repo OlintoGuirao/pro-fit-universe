@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -6,168 +6,222 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  getMessagesBetweenUsers,
+  getStudentsByTrainer,
+  getTrainerByStudent,
+  sendMessage,
+  markMessagesAsRead,
+  getUnreadMessagesCount,
+  getUnreadMessagesCountForStudent,
+  associateStudentWithTrainer,
+  subscribeToMessages,
+} from '@/lib/db/queries';
 
-// Dados fictícios para exemplo
-const mockStudents = [
-  {
-    id: 1,
-    name: 'João Silva',
-    avatar: '/avatars/student1.jpg',
-    lastMessage: 'Está indo bem! Consegui fazer todas as séries.',
-    timestamp: '10:32',
-    unread: 2,
-  },
-  {
-    id: 2,
-    name: 'Maria Santos',
-    avatar: '/avatars/student2.jpg',
-    lastMessage: 'Professor, posso trocar o treino de hoje?',
-    timestamp: '09:15',
-    unread: 0,
-  },
-  {
-    id: 3,
-    name: 'Pedro Oliveira',
-    avatar: '/avatars/student3.jpg',
-    lastMessage: 'Obrigado pelo treino!',
-    timestamp: 'Ontem',
-    unread: 0,
-  },
-];
+interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  isRead: boolean;
+  createdAt: Date;
+}
 
-const mockChats = {
-  1: [
-    {
-      id: 1,
-      sender: 'trainer',
-      name: 'Prof. João',
-      avatar: '/avatars/trainer.jpg',
-      message: 'Olá! Como está o treino hoje?',
-      timestamp: '10:30',
-    },
-    {
-      id: 2,
-      sender: 'student',
-      name: 'João Silva',
-      avatar: '/avatars/student1.jpg',
-      message: 'Está indo bem! Consegui fazer todas as séries.',
-      timestamp: '10:32',
-    },
-    {
-      id: 3,
-      sender: 'trainer',
-      name: 'Prof. João',
-      avatar: '/avatars/trainer.jpg',
-      message: 'Ótimo! Lembre-se de manter a postura correta durante os exercícios.',
-      timestamp: '10:33',
-    },
-  ],
-  2: [
-    {
-      id: 1,
-      sender: 'trainer',
-      name: 'Prof. João',
-      avatar: '/avatars/trainer.jpg',
-      message: 'Olá Maria! Como posso ajudar?',
-      timestamp: '09:10',
-    },
-    {
-      id: 2,
-      sender: 'student',
-      name: 'Maria Santos',
-      avatar: '/avatars/student2.jpg',
-      message: 'Professor, posso trocar o treino de hoje?',
-      timestamp: '09:15',
-    },
-  ],
-  3: [
-    {
-      id: 1,
-      sender: 'trainer',
-      name: 'Prof. João',
-      avatar: '/avatars/trainer.jpg',
-      message: 'Bom treino hoje!',
-      timestamp: 'Ontem',
-    },
-    {
-      id: 2,
-      sender: 'student',
-      name: 'Pedro Oliveira',
-      avatar: '/avatars/student3.jpg',
-      message: 'Obrigado pelo treino!',
-      timestamp: 'Ontem',
-    },
-  ],
-};
+interface User {
+  id: string;
+  name: string;
+  avatar: string | null;
+}
 
 const Messages = () => {
   const { user } = useAuth();
-  const [selectedStudent, setSelectedStudent] = useState<number | null>(null);
-  const [messages, setMessages] = useState<typeof mockChats>(mockChats);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [isAssociating, setIsAssociating] = useState(false);
 
-  const filteredStudents = mockStudents.filter(student =>
-    student.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Carregar dados iniciais
+  useEffect(() => {
+    const loadInitialData = async () => {
+      if (!user) return;
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedStudent) return;
-
-    const message = {
-      id: messages[selectedStudent].length + 1,
-      sender: user?.level === 2 ? 'trainer' : 'student',
-      name: user?.level === 2 ? 'Prof. João' : 'Você',
-      avatar: user?.level === 2 ? '/avatars/trainer.jpg' : '/avatars/student.jpg',
-      message: newMessage.trim(),
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      if (user.level === 1) {
+        // Aluno: carregar professor
+        const trainer = await getTrainerByStudent(user.id);
+        if (trainer.length > 0) {
+          setSelectedUser(trainer[0]);
+          const messages = await getMessagesBetweenUsers(user.id, trainer[0].id);
+          setMessages(messages);
+          const unreadCount = await getUnreadMessagesCountForStudent(user.id, trainer[0].id);
+          setUnreadCounts({ [trainer[0].id]: unreadCount });
+        }
+      } else if (user.level === 2) {
+        // Professor: carregar alunos
+        const students = await getStudentsByTrainer(user.id);
+        setUsers(students);
+        const unreadCounts = await getUnreadMessagesCount(user.id);
+        setUnreadCounts(unreadCounts);
+      }
     };
 
-    setMessages(prev => ({
-      ...prev,
-      [selectedStudent]: [...prev[selectedStudent], message],
-    }));
-    setNewMessage('');
+    loadInitialData();
+  }, [user]);
+
+  // Carregar mensagens quando selecionar um usuário
+  useEffect(() => {
+    if (!user || !selectedUser) return;
+
+    try {
+      console.log('Iniciando escuta de mensagens entre:', user.id, selectedUser.id);
+      
+      // Marcar mensagens como lidas
+      if (user.level === 1) {
+        markMessagesAsRead(selectedUser.id, user.id);
+      } else {
+        markMessagesAsRead(selectedUser.id, user.id);
+      }
+
+      // Escutar mensagens em tempo real
+      const unsubscribe = subscribeToMessages(user.id, selectedUser.id, (newMessages) => {
+        console.log('Novas mensagens recebidas:', newMessages);
+        setMessages(newMessages);
+      });
+
+      // Limpar a escuta quando o componente for desmontado ou o usuário selecionado mudar
+      return () => {
+        console.log('Limpando escuta de mensagens');
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Erro ao carregar mensagens:', error);
+      alert('Erro ao carregar mensagens. Por favor, tente novamente.');
+    }
+  }, [user, selectedUser]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !user || !selectedUser) {
+      console.log('Dados inválidos:', { newMessage, user, selectedUser });
+      return;
+    }
+
+    try {
+      console.log('Enviando mensagem:', {
+        senderId: user.id,
+        receiverId: selectedUser.id,
+        content: newMessage.trim()
+      });
+
+      await sendMessage(user.id, selectedUser.id, newMessage.trim());
+      setNewMessage('');
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      alert('Erro ao enviar mensagem. Por favor, tente novamente.');
+    }
+  };
+
+  const handleAssociate = async () => {
+    if (!user || user.level !== 3) return; // Apenas admin pode fazer isso
+    
+    try {
+      setIsAssociating(true);
+      const studentId = "r1zF9vMjSETM3QqATaJYOCLtzVm2"; // ID do aluno
+      const trainerId = "9FlIw5ZQCEYYXWMPjIWT61dYqbo1"; // ID do professor
+      
+      await associateStudentWithTrainer(studentId, trainerId);
+      alert('Aluno associado ao professor com sucesso!');
+    } catch (error) {
+      console.error('Erro ao associar:', error);
+      alert(`Erro ao associar aluno ao professor: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+    } finally {
+      setIsAssociating(false);
+    }
+  };
+
+  const filteredUsers = users.filter(u =>
+    u.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Renderizar botão de associação apenas para admin
+  const renderAssociateButton = () => {
+    if (user?.level !== 3) return null;
+
+    return (
+      <div className="mb-4">
+        <Button 
+          onClick={handleAssociate} 
+          disabled={isAssociating}
+          variant="outline"
+        >
+          {isAssociating ? 'Associando...' : 'Associar Aluno ao Professor'}
+        </Button>
+      </div>
+    );
   };
 
   if (user?.level === 1) {
-    // Visão do aluno - mostra apenas o chat com o professor
+    // Visão do aluno
+    if (!selectedUser) {
+      return (
+        <div className="container mx-auto py-8">
+          <Card>
+            <CardContent className="h-[600px] flex items-center justify-center">
+              <p className="text-muted-foreground">
+                Nenhum professor atribuído
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
       <div className="container mx-auto py-8">
+        {renderAssociateButton()}
         <Card>
           <CardHeader>
-            <CardTitle>Chat com Prof. João</CardTitle>
+            <CardTitle>Chat com {selectedUser.name}</CardTitle>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[500px] mb-4">
               <div className="space-y-4">
-                {messages[1].map((msg) => (
+                {messages.map((msg) => (
                   <div
                     key={msg.id}
                     className={`flex ${
-                      msg.sender === 'student' ? 'justify-end' : 'justify-start'
+                      msg.senderId === user.id ? 'justify-end' : 'justify-start'
                     }`}
                   >
                     <div
                       className={`flex items-end gap-2 max-w-[80%] ${
-                        msg.sender === 'student' ? 'flex-row-reverse' : 'flex-row'
+                        msg.senderId === user.id ? 'flex-row-reverse' : 'flex-row'
                       }`}
                     >
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={msg.avatar} alt={msg.name} />
-                        <AvatarFallback>{msg.name[0]}</AvatarFallback>
+                        <AvatarImage
+                          src={msg.senderId === user.id ? user.avatar || undefined : selectedUser.avatar || undefined}
+                          alt={msg.senderId === user.id ? user.name : selectedUser.name}
+                        />
+                        <AvatarFallback>
+                          {(msg.senderId === user.id ? user.name : selectedUser.name)[0]}
+                        </AvatarFallback>
                       </Avatar>
                       <div
                         className={`rounded-lg p-3 ${
-                          msg.sender === 'student'
+                          msg.senderId === user.id
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted'
                         }`}
                       >
-                        <p className="text-sm">{msg.message}</p>
+                        <p className="text-sm">{msg.content}</p>
                         <span className="text-xs opacity-70 mt-1 block">
-                          {msg.timestamp}
+                          {new Date(msg.createdAt).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </span>
                       </div>
                     </div>
@@ -193,9 +247,10 @@ const Messages = () => {
     );
   }
 
-  // Visão do professor - mostra lista de alunos e chat selecionado
+  // Visão do professor
   return (
     <div className="container mx-auto py-8">
+      {renderAssociateButton()}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="md:col-span-1">
           <CardHeader>
@@ -212,29 +267,26 @@ const Messages = () => {
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[600px]">
-              {filteredStudents.map((student) => (
+              {filteredUsers.map((student) => (
                 <Button
                   key={student.id}
-                  variant={selectedStudent === student.id ? "secondary" : "ghost"}
+                  variant={selectedUser?.id === student.id ? "secondary" : "ghost"}
                   className="w-full justify-start px-4 py-3"
-                  onClick={() => setSelectedStudent(student.id)}
+                  onClick={() => setSelectedUser(student)}
                 >
                   <Avatar className="h-8 w-8 mr-2">
-                    <AvatarImage src={student.avatar} alt={student.name} />
+                    <AvatarImage src={student.avatar || undefined} alt={student.name} />
                     <AvatarFallback>{student.name[0]}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 text-left">
                     <div className="flex justify-between items-center">
                       <span className="font-medium">{student.name}</span>
-                      {student.unread > 0 && (
+                      {unreadCounts[student.id] > 0 && (
                         <span className="bg-primary text-primary-foreground text-xs px-2 py-1 rounded-full">
-                          {student.unread}
+                          {unreadCounts[student.id]}
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {student.lastMessage}
-                    </p>
                   </div>
                 </Button>
               ))}
@@ -243,42 +295,48 @@ const Messages = () => {
         </Card>
 
         <Card className="md:col-span-3">
-          {selectedStudent ? (
+          {selectedUser ? (
             <>
               <CardHeader>
-                <CardTitle>
-                  Chat com {mockStudents.find(s => s.id === selectedStudent)?.name}
-                </CardTitle>
+                <CardTitle>Chat com {selectedUser.name}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ScrollArea className="h-[500px] mb-4">
                   <div className="space-y-4">
-                    {messages[selectedStudent].map((msg) => (
+                    {messages.map((msg) => (
                       <div
                         key={msg.id}
                         className={`flex ${
-                          msg.sender === 'trainer' ? 'justify-end' : 'justify-start'
+                          msg.senderId === user?.id ? 'justify-end' : 'justify-start'
                         }`}
                       >
                         <div
                           className={`flex items-end gap-2 max-w-[80%] ${
-                            msg.sender === 'trainer' ? 'flex-row-reverse' : 'flex-row'
+                            msg.senderId === user?.id ? 'flex-row-reverse' : 'flex-row'
                           }`}
                         >
                           <Avatar className="h-8 w-8">
-                            <AvatarImage src={msg.avatar} alt={msg.name} />
-                            <AvatarFallback>{msg.name[0]}</AvatarFallback>
+                            <AvatarImage
+                              src={msg.senderId === user?.id ? user?.avatar || undefined : selectedUser.avatar || undefined}
+                              alt={msg.senderId === user?.id ? user?.name : selectedUser.name}
+                            />
+                            <AvatarFallback>
+                              {(msg.senderId === user?.id ? user?.name : selectedUser.name)[0]}
+                            </AvatarFallback>
                           </Avatar>
                           <div
                             className={`rounded-lg p-3 ${
-                              msg.sender === 'trainer'
+                              msg.senderId === user?.id
                                 ? 'bg-primary text-primary-foreground'
                                 : 'bg-muted'
                             }`}
                           >
-                            <p className="text-sm">{msg.message}</p>
+                            <p className="text-sm">{msg.content}</p>
                             <span className="text-xs opacity-70 mt-1 block">
-                              {msg.timestamp}
+                              {new Date(msg.createdAt).toLocaleTimeString('pt-BR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
                             </span>
                           </div>
                         </div>
