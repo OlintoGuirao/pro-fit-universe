@@ -1,11 +1,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { authService } from '@/services/authService';
 import { UserType } from '@/types/user';
 
 interface AuthContextType {
   user: UserType | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  register: (email: string, password: string, userData: Partial<UserType>) => Promise<void>;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -23,70 +27,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Simulated user data for demo
-  const mockUsers: UserType[] = [
-    {
-      id: '1',
-      email: 'aluno@test.com',
-      name: 'João Aluno',
-      level: 1,
-      createdAt: new Date(),
-      isActive: true,
-      trainerId: '2',
-      goals: ['Hipertrofia', 'Emagrecimento'],
-      weight: 80,
-      height: 175
-    } as any,
-    {
-      id: '2',
-      email: 'professor@test.com',
-      name: 'Maria Personal',
-      level: 2,
-      createdAt: new Date(),
-      isActive: true,
-      students: ['1'],
-      maxStudents: 5,
-      isVerified: true
-    } as any,
-    {
-      id: '3',
-      email: 'admin@test.com',
-      name: 'Admin Sistema',
-      level: 3,
-      createdAt: new Date(),
-      isActive: true
-    } as any
-  ];
-
   useEffect(() => {
-    // Simular verificação de sessão
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userData = await authService.getCurrentUserData(firebaseUser);
+          setUser(userData);
+        } catch (error) {
+          console.error('Erro ao carregar dados do usuário:', error);
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    // Simular autenticação
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser) {
-      setUser(foundUser);
-      localStorage.setItem('user', JSON.stringify(foundUser));
-    } else {
-      throw new Error('Usuário ou senha inválidos');
+    try {
+      const { userData } = await authService.login(email, password);
+      setUser(userData);
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const register = async (email: string, password: string, userData: Partial<UserType>) => {
+    setIsLoading(true);
+    try {
+      const { userData: newUserData } = await authService.register(email, password, userData);
+      setUser(newUserData as UserType);
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await authService.logout();
+      setUser(null);
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
