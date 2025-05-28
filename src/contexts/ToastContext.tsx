@@ -5,13 +5,12 @@ type ToastType = 'success' | 'error' | 'info' | 'warning';
 interface Toast {
   id: string;
   type: ToastType;
-  title: string;
-  description?: string;
+  message: string;
 }
 
 interface ToastContextType {
   toasts: Toast[];
-  addToast: (type: ToastType, title: string, description?: string) => void;
+  addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
 }
 
@@ -28,9 +27,9 @@ export const useToast = () => {
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((type: ToastType, title: string, description?: string) => {
+  const addToast = useCallback(({ type, message }: Omit<Toast, 'id'>) => {
     const id = Math.random().toString(36).substring(7);
-    setToasts((prev) => [...prev, { id, type, title, description }]);
+    setToasts((prev) => [...prev, { id, type, message }]);
 
     // Remover o toast após 5 segundos
     setTimeout(() => {

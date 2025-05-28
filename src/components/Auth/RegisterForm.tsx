@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,79 +9,75 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft } from 'lucide-react';
-import { useToast } from '@/contexts/ToastContext';
 
 interface RegisterFormProps {
-  onBackToLogin: () => void;
+  onBackToLogin?: () => void;
 }
 
-const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
+export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
+  const navigate = useNavigate();
+  const { register } = useAuth();
+  const { addToast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
-    name: '',
-    level: 1,
-    goals: '',
-    weight: '',
-    height: ''
+    role: 'student'
   });
-  const [isLoading, setIsLoading] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
-  const { register } = useAuth();
-  const { addToast } = useToast();
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleRoleChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      role: value
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     if (formData.password !== formData.confirmPassword) {
-      addToast('error', 'Erro no cadastro', 'As senhas não coincidem');
+      addToast({
+        type: 'error',
+        message: 'As senhas não coincidem.'
+      });
       setIsLoading(false);
       return;
     }
 
     try {
-      const userData = {
-        name: formData.name,
-        level: formData.level as 1 | 2 | 3,
-        ...(formData.level === 1 && {
-          goals: formData.goals ? formData.goals.split(',').map(g => g.trim()) : [],
-          weight: formData.weight ? parseFloat(formData.weight) : undefined,
-          height: formData.height ? parseFloat(formData.height) : undefined
-        }),
-        ...(formData.level === 2 && {
-          students: [],
-          maxStudents: 5,
-          isVerified: false
-        })
-      };
-
-      console.log('Dados do usuário a serem registrados:', userData);
-      await register(formData.email, formData.password, userData);
-      console.log('Usuário registrado com sucesso');
-      addToast('success', 'Conta criada com sucesso', 'Bem-vindo ao FitConnect!');
-    } catch (err: any) {
-      console.error('Erro no cadastro:', err);
+      await register(formData.email, formData.password, formData.name, formData.role);
+      addToast({
+        type: 'success',
+        message: 'Cadastro realizado com sucesso!'
+      });
+      navigate('/');
+    } catch (error: any) {
+      let message = 'Erro ao fazer cadastro. Tente novamente.';
       
-      if (err.code === 'auth/email-already-in-use') {
-        addToast('error', 'Email já cadastrado', 'Este email já está sendo usado por outra conta');
-      } else if (err.code === 'auth/invalid-email') {
-        addToast('error', 'Email inválido', 'Por favor, insira um email válido');
-      } else if (err.code === 'auth/weak-password') {
-        addToast('error', 'Senha fraca', 'A senha deve ter pelo menos 6 caracteres');
-      } else if (err.code === 'auth/network-request-failed') {
-        addToast('error', 'Erro de conexão', 'Verifique sua conexão com a internet');
-      } else {
-        addToast('error', 'Erro ao criar conta', err.message || 'Ocorreu um erro inesperado');
+      if (error.code === 'auth/email-already-in-use') {
+        message = 'Este email já está em uso.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'A senha é muito fraca. Use pelo menos 6 caracteres.';
       }
+      
+      addToast({
+        type: 'error',
+        message
+      });
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleInputChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   return (
@@ -117,12 +115,14 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nome Completo</Label>
+                <Label htmlFor="name">Nome</Label>
                 <Input
                   id="name"
+                  name="name"
                   value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
 
@@ -130,74 +130,25 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="level">Tipo de Conta</Label>
-                <Select 
-                  value={formData.level.toString()} 
-                  onValueChange={(value) => handleInputChange('level', parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Aluno</SelectItem>
-                    <SelectItem value="2">Personal Trainer</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {formData.level === 1 && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="goals">Objetivos (separados por vírgula)</Label>
-                    <Textarea
-                      id="goals"
-                      value={formData.goals}
-                      onChange={(e) => handleInputChange('goals', e.target.value)}
-                      placeholder="Ex: Hipertrofia, Emagrecimento"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="weight">Peso (kg)</Label>
-                      <Input
-                        id="weight"
-                        type="number"
-                        value={formData.weight}
-                        onChange={(e) => handleInputChange('weight', e.target.value)}
-                        placeholder="70"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="height">Altura (cm)</Label>
-                      <Input
-                        id="height"
-                        type="number"
-                        value={formData.height}
-                        onChange={(e) => handleInputChange('height', e.target.value)}
-                        placeholder="175"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="password">Senha</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => handleInputChange('password', e.target.value)}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
 
@@ -205,26 +156,41 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
                 <Label htmlFor="confirmPassword">Confirmar Senha</Label>
                 <Input
                   id="confirmPassword"
+                  name="confirmPassword"
                   type="password"
                   value={formData.confirmPassword}
-                  onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                  onChange={handleInputChange}
                   required
+                  disabled={isLoading}
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Criando conta...' : 'Criar Conta'}
-              </Button>
+              <div className="space-y-2">
+                <Label htmlFor="role">Tipo de Conta</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={handleRoleChange}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o tipo de conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="student">Aluno</SelectItem>
+                    <SelectItem value="trainer">Personal Trainer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-col space-y-2">
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Cadastrando...' : 'Cadastrar'}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>
       </div>
     </div>
   );
-};
-
-export default RegisterForm;
+}

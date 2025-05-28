@@ -1,13 +1,13 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import LoginForm from '@/components/Auth/LoginForm';
+import { LoginForm } from '@/components/Auth/LoginForm';
 import Navbar from '@/components/Layout/Navbar';
 import Sidebar from '@/components/Layout/Sidebar';
 import StudentDashboard from '@/components/Student/StudentDashboard';
 import TrainerDashboard from '@/components/Trainer/TrainerDashboard';
 import AdminDashboard from '@/components/Admin/AdminDashboard';
 import SocialFeed from '@/components/Social/SocialFeed';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const Index = () => {
   const { user, isLoading } = useAuth();
@@ -43,7 +43,18 @@ const Index = () => {
   }
 
   if (!user) {
-    return <LoginForm />;
+    return (
+      <div className="container mx-auto py-8">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle className="text-center">Login</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LoginForm />
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   const renderContent = () => {

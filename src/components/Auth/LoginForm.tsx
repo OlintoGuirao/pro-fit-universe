@@ -1,48 +1,60 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import RegisterForm from './RegisterForm';
-import { useToast } from '@/contexts/ToastContext';
+import { RegisterForm } from './RegisterForm';
 
-const LoginForm = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
+export function LoginForm() {
+  const navigate = useNavigate();
   const { login } = useAuth();
   const { addToast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [showRegister, setShowRegister] = useState(false);
 
   if (showRegister) {
     return <RegisterForm onBackToLogin={() => setShowRegister(false)} />;
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    console.log('Tentando fazer login com:', email);
-
     try {
-      await login(email, password);
-      console.log('Login realizado com sucesso');
-      addToast('success', 'Login realizado com sucesso', 'Bem-vindo de volta!');
-    } catch (err: any) {
-      console.error('Erro no login:', err);
+      await login(formData.email, formData.password);
+      addToast({
+        type: 'success',
+        message: 'Login realizado com sucesso!'
+      });
+      navigate('/');
+    } catch (error: any) {
+      let message = 'Erro ao fazer login. Tente novamente.';
       
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        addToast('error', 'Erro ao fazer login', 'Email ou senha inválidos');
-      } else if (err.code === 'auth/too-many-requests') {
-        addToast('warning', 'Muitas tentativas', 'Por favor, tente novamente mais tarde');
-      } else if (err.code === 'auth/user-disabled') {
-        addToast('error', 'Conta desativada', 'Sua conta foi desativada. Entre em contato com o suporte.');
-      } else if (err.code === 'auth/network-request-failed') {
-        addToast('error', 'Erro de conexão', 'Verifique sua conexão com a internet');
-      } else {
-        addToast('error', 'Erro ao fazer login', err.message || 'Ocorreu um erro inesperado');
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        message = 'Email ou senha incorretos.';
+      } else if (error.code === 'auth/too-many-requests') {
+        message = 'Muitas tentativas de login. Tente novamente mais tarde.';
       }
+      
+      addToast({
+        type: 'error',
+        message
+      });
     } finally {
       setIsLoading(false);
     }
@@ -55,18 +67,26 @@ const LoginForm = () => {
   ];
 
   const handleDemoLogin = async (demoEmail: string, demoPassword: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPassword);
+    setFormData({
+      email: demoEmail,
+      password: demoPassword
+    });
     
     setIsLoading(true);
 
     try {
       await login(demoEmail, demoPassword);
-      console.log('Demo login realizado com sucesso');
-      addToast('success', 'Login realizado com sucesso', 'Bem-vindo à conta demo!');
+      addToast({
+        type: 'success',
+        message: 'Login realizado com sucesso!'
+      });
+      navigate('/');
     } catch (err: any) {
       console.error('Erro no demo login:', err);
-      addToast('error', 'Erro ao fazer login com conta demo', 'Tente novamente mais tarde');
+      addToast({
+        type: 'error',
+        message: 'Erro ao fazer login com conta demo. Tente novamente mais tarde.'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -95,32 +115,30 @@ const LoginForm = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm">Email</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={handleInputChange}
                   required
-                  className="h-10"
+                  disabled={isLoading}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm">Senha</Label>
+                <Label htmlFor="password">Senha</Label>
                 <Input
                   id="password"
+                  name="password"
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={handleInputChange}
                   required
-                  className="h-10"
+                  disabled={isLoading}
                 />
               </div>
-              <Button 
-                type="submit" 
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 h-10"
-                disabled={isLoading}
-              >
+              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Entrando...' : 'Entrar'}
               </Button>
             </form>
@@ -165,6 +183,4 @@ const LoginForm = () => {
       </div>
     </div>
   );
-};
-
-export default LoginForm;
+}

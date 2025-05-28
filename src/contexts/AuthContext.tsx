@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -7,6 +6,7 @@ import { UserType } from '@/types/user';
 
 interface AuthContextType {
   user: UserType | null;
+  setUser: React.Dispatch<React.SetStateAction<UserType | null>>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, userData: Partial<UserType>) => Promise<void>;
   logout: () => Promise<void>;
@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, setUser, login, register, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

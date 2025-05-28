@@ -14,7 +14,7 @@ export const ToastContainer = () => {
 
   return (
     <ToastProvider>
-      {toasts.map(({ id, type, title, description }) => (
+      {toasts.map(({ id, type, message }) => (
         <Toast
           key={id}
           variant={type === 'error' ? 'destructive' : 'default'}
@@ -26,10 +26,7 @@ export const ToastContainer = () => {
           }`}
         >
           <div className="grid gap-1">
-            <ToastTitle>{title}</ToastTitle>
-            {description && (
-              <ToastDescription>{description}</ToastDescription>
-            )}
+            <ToastTitle>{message}</ToastTitle>
           </div>
           <ToastClose onClick={() => removeToast(id)} />
         </Toast>
