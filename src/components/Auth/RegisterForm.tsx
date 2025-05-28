@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -8,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft } from 'lucide-react';
+import { useToast } from '@/contexts/ToastContext';
 
 interface RegisterFormProps {
   onBackToLogin: () => void;
@@ -25,16 +25,16 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
     height: ''
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
   const { register } = useAuth();
+  const { addToast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('As senhas não coincidem');
+      addToast('error', 'Erro no cadastro', 'As senhas não coincidem');
       setIsLoading(false);
       return;
     }
@@ -43,20 +43,36 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
       const userData = {
         name: formData.name,
         level: formData.level as 1 | 2 | 3,
-        goals: formData.goals ? formData.goals.split(',').map(g => g.trim()) : [],
-        weight: formData.weight ? parseFloat(formData.weight) : undefined,
-        height: formData.height ? parseFloat(formData.height) : undefined,
-        ...(formData.level === 2 && { 
+        ...(formData.level === 1 && {
+          goals: formData.goals ? formData.goals.split(',').map(g => g.trim()) : [],
+          weight: formData.weight ? parseFloat(formData.weight) : undefined,
+          height: formData.height ? parseFloat(formData.height) : undefined
+        }),
+        ...(formData.level === 2 && {
           students: [],
           maxStudents: 5,
-          isVerified: false 
+          isVerified: false
         })
       };
 
+      console.log('Dados do usuário a serem registrados:', userData);
       await register(formData.email, formData.password, userData);
+      console.log('Usuário registrado com sucesso');
+      addToast('success', 'Conta criada com sucesso', 'Bem-vindo ao FitConnect!');
     } catch (err: any) {
       console.error('Erro no cadastro:', err);
-      setError(err.message || 'Erro ao criar conta');
+      
+      if (err.code === 'auth/email-already-in-use') {
+        addToast('error', 'Email já cadastrado', 'Este email já está sendo usado por outra conta');
+      } else if (err.code === 'auth/invalid-email') {
+        addToast('error', 'Email inválido', 'Por favor, insira um email válido');
+      } else if (err.code === 'auth/weak-password') {
+        addToast('error', 'Senha fraca', 'A senha deve ter pelo menos 6 caracteres');
+      } else if (err.code === 'auth/network-request-failed') {
+        addToast('error', 'Erro de conexão', 'Verifique sua conexão com a internet');
+      } else {
+        addToast('error', 'Erro ao criar conta', err.message || 'Ocorreu um erro inesperado');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -133,7 +149,6 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
                   <SelectContent>
                     <SelectItem value="1">Aluno</SelectItem>
                     <SelectItem value="2">Personal Trainer</SelectItem>
-                    <SelectItem value="3">Administrador</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -196,10 +211,6 @@ const RegisterForm: React.FC<RegisterFormProps> = ({ onBackToLogin }) => {
                   required
                 />
               </div>
-
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
 
               <Button 
                 type="submit" 

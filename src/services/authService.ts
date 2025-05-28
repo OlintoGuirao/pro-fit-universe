@@ -1,4 +1,3 @@
-
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword,
@@ -38,8 +37,15 @@ export const authService = {
   // Cadastrar novo usuário
   async register(email: string, password: string, userData: Partial<UserType>) {
     try {
+      // Impedir criação de administradores via API
+      if (userData.level === 3) {
+        throw new Error('Não é possível criar contas de administrador através do registro público');
+      }
+
+      console.log('Iniciando processo de registro para:', email);
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log('Usuário criado com sucesso no Firebase Auth:', user.uid);
       
       // Criar documento do usuário no Firestore
       const userDoc = {
@@ -49,14 +55,25 @@ export const authService = {
         level: userData.level || 1,
         createdAt: new Date(),
         isActive: true,
-        ...userData
+        ...(userData.level === 1 && {
+          goals: userData.goals || [],
+          weight: userData.weight,
+          height: userData.height
+        }),
+        ...(userData.level === 2 && {
+          students: [],
+          maxStudents: userData.maxStudents || 5,
+          isVerified: false
+        })
       };
 
+      console.log('Criando documento do usuário no Firestore:', userDoc);
       await setDoc(doc(db, 'users', user.uid), userDoc);
+      console.log('Documento do usuário criado com sucesso no Firestore');
       
       return { user, userData: userDoc };
     } catch (error) {
-      console.error('Erro no cadastro:', error);
+      console.error('Erro detalhado no cadastro:', error);
       throw error;
     }
   },
@@ -64,16 +81,21 @@ export const authService = {
   // Fazer login
   async login(email: string, password: string) {
     try {
+      console.log('Iniciando processo de login para:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log('Autenticação Firebase bem sucedida para:', email);
       
       // Buscar dados do usuário no Firestore
       const userDocRef = doc(db, 'users', user.uid);
+      console.log('Buscando documento do usuário no Firestore:', user.uid);
       const userDoc = await getDoc(userDocRef);
       
       if (userDoc.exists()) {
+        console.log('Documento do usuário encontrado no Firestore');
         return { user, userData: userDoc.data() as UserType };
       } else {
+        console.log('Documento do usuário não encontrado no Firestore');
         // Se o usuário não existe no Firestore, verificar se é um usuário demo
         const demoUserData = demoUsers[email as keyof typeof demoUsers];
         if (demoUserData) {
@@ -90,10 +112,10 @@ export const authService = {
           return { user, userData: newUserDoc as UserType };
         }
         
-        throw new Error('Dados do usuário não encontrados');
+        throw new Error('Dados do usuário não encontrados no Firestore');
       }
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('Erro detalhado no login:', error);
       throw error;
     }
   },

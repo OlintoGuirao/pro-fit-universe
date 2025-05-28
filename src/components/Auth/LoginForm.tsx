@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -6,14 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import RegisterForm from './RegisterForm';
+import { useToast } from '@/contexts/ToastContext';
 
 const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [showRegister, setShowRegister] = useState(false);
   const { login } = useAuth();
+  const { addToast } = useToast();
 
   if (showRegister) {
     return <RegisterForm onBackToLogin={() => setShowRegister(false)} />;
@@ -22,26 +22,27 @@ const LoginForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError('');
 
     console.log('Tentando fazer login com:', email);
 
     try {
       await login(email, password);
       console.log('Login realizado com sucesso');
+      addToast('success', 'Login realizado com sucesso', 'Bem-vindo de volta!');
     } catch (err: any) {
       console.error('Erro no login:', err);
-      let errorMessage = 'Erro ao fazer login';
       
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        errorMessage = 'Email ou senha inválidos';
+        addToast('error', 'Erro ao fazer login', 'Email ou senha inválidos');
       } else if (err.code === 'auth/too-many-requests') {
-        errorMessage = 'Muitas tentativas. Tente novamente mais tarde';
-      } else if (err.message) {
-        errorMessage = err.message;
+        addToast('warning', 'Muitas tentativas', 'Por favor, tente novamente mais tarde');
+      } else if (err.code === 'auth/user-disabled') {
+        addToast('error', 'Conta desativada', 'Sua conta foi desativada. Entre em contato com o suporte.');
+      } else if (err.code === 'auth/network-request-failed') {
+        addToast('error', 'Erro de conexão', 'Verifique sua conexão com a internet');
+      } else {
+        addToast('error', 'Erro ao fazer login', err.message || 'Ocorreu um erro inesperado');
       }
-      
-      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -57,16 +58,15 @@ const LoginForm = () => {
     setEmail(demoEmail);
     setPassword(demoPassword);
     
-    // Fazer login automaticamente
     setIsLoading(true);
-    setError('');
 
     try {
       await login(demoEmail, demoPassword);
       console.log('Demo login realizado com sucesso');
+      addToast('success', 'Login realizado com sucesso', 'Bem-vindo à conta demo!');
     } catch (err: any) {
       console.error('Erro no demo login:', err);
-      setError('Erro ao fazer login com conta demo');
+      addToast('error', 'Erro ao fazer login com conta demo', 'Tente novamente mais tarde');
     } finally {
       setIsLoading(false);
     }
@@ -116,9 +116,6 @@ const LoginForm = () => {
                   className="h-10"
                 />
               </div>
-              {error && (
-                <p className="text-red-500 text-sm">{error}</p>
-              )}
               <Button 
                 type="submit" 
                 className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 h-10"
