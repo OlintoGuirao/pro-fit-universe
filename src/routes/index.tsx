@@ -5,6 +5,7 @@ import Register from '@/pages/Register';
 import Profile from '@/pages/Profile';
 import NotFound from '@/pages/NotFound';
 import PrivateRoute from '@/components/Auth/PrivateRoute';
+import TrainerDashboard from '@/components/Trainer/TrainerDashboard';
 
 export default function AppRoutes() {
   return (
@@ -17,6 +18,14 @@ export default function AppRoutes() {
         element={
           <PrivateRoute>
             <Profile />
+          </PrivateRoute>
+        } 
+      />
+      <Route 
+        path="/trainer/dashboard" 
+        element={
+          <PrivateRoute>
+            <TrainerDashboard />
           </PrivateRoute>
         } 
       />

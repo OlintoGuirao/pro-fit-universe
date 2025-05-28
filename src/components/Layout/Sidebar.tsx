@@ -42,6 +42,11 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
   const handleTabClick = (tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false); // Fecha o menu em todas as resoluções
+    
+    // Redireciona para a página correta
+    if (tab === 'dashboard') {
+      navigate('/trainer/dashboard');
+    }
   };
 
   if (!user) return null;
@@ -93,6 +98,14 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
 
   const renderTrainerButtons = () => (
     <>
+      <Button
+        variant={activeTab === 'dashboard' ? 'default' : 'ghost'}
+        onClick={() => handleTabClick('dashboard')}
+        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
+      >
+        <Home className="mr-2 h-4 w-4" />
+        Dashboard
+      </Button>
       <Button
         variant={activeTab === 'social' ? 'default' : 'ghost'}
         onClick={() => handleTabClick('social')}
