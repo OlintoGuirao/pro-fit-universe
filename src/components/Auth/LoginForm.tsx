@@ -67,11 +67,6 @@ export function LoginForm() {
   ];
 
   const handleDemoLogin = async (demoEmail: string, demoPassword: string) => {
-    setFormData({
-      email: demoEmail,
-      password: demoPassword
-    });
-    
     setIsLoading(true);
 
     try {

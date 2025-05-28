@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -8,6 +8,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createPost, subscribeToPosts, likePost, addComment } from '@/lib/db/queries';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { Heart, MessageCircle, Share2, Image as ImageIcon, Video, X, Camera } from 'lucide-react';
+import { storage } from '@/lib/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Timestamp } from 'firebase/firestore';
 
 const SocialFeed = () => {
   const { user } = useAuth();
@@ -15,6 +19,10 @@ const SocialFeed = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [selectedType, setSelectedType] = useState<'progress' | 'workout' | 'diet' | 'general'>('general');
   const [loading, setLoading] = useState(true);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -27,15 +35,76 @@ const SocialFeed = () => {
     return () => unsubscribe();
   }, [user]);
 
-  const handlePost = async () => {
-    if (!newPost.trim() || !user) return;
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const validFiles = files.filter(file => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      
+      if (!isImage && !isVideo) {
+        alert('Por favor, selecione apenas imagens ou vídeos.');
+        return false;
+      }
+      
+      if (file.size > maxSize) {
+        alert('O arquivo é muito grande. O tamanho máximo é 10MB.');
+        return false;
+      }
+      
+      return true;
+    });
+    
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const handleCameraCapture = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadFiles = async (files: File[]): Promise<string[]> => {
+    const uploadPromises = files.map(async (file) => {
+      const storageRef = ref(storage, `posts/${user?.uid}/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      return getDownloadURL(storageRef);
+    });
+
+    return Promise.all(uploadPromises);
+  };
+
+  const handleCreatePost = async () => {
+    if (!user || (!newPost.trim() && selectedFiles.length === 0)) return;
 
     try {
-      await createPost(user.id, newPost, selectedType);
+      setUploading(true);
+      let mediaUrls: string[] = [];
+      
+      if (selectedFiles.length > 0) {
+        mediaUrls = await uploadFiles(selectedFiles);
+      }
+
+      await createPost(
+        user.id,
+        newPost,
+        selectedType,
+        mediaUrls.filter(url => url.includes('image')),
+        mediaUrls.filter(url => url.includes('video'))
+      );
+
       setNewPost('');
+      setSelectedFiles([]);
     } catch (error) {
       console.error('Erro ao criar post:', error);
       alert('Erro ao criar post. Tente novamente.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -79,6 +148,75 @@ const SocialFeed = () => {
     }
   };
 
+  const PostContent = ({ post }: { post: any }) => {
+    if (post.images && post.images.length > 0) {
+      return (
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {post.images.map((image, index) => (
+            <img
+              key={index}
+              src={image}
+              alt={`Imagem ${index + 1}`}
+              className="w-full h-48 object-cover rounded-lg"
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (post.videos && post.videos.length > 0) {
+      return (
+        <div className="grid grid-cols-1 gap-2 mt-2">
+          {post.videos.map((video, index) => (
+            <video
+              key={index}
+              src={video}
+              controls
+              className="w-full rounded-lg"
+            />
+          ))}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const formatPostDate = (date: any) => {
+    if (!date) return '';
+    
+    try {
+      // Se for um Timestamp do Firestore
+      if (date instanceof Timestamp) {
+        return formatDistanceToNow(date.toDate(), {
+          addSuffix: true,
+          locale: ptBR
+        });
+      }
+      
+      // Se for uma data normal
+      if (date instanceof Date) {
+        return formatDistanceToNow(date, {
+          addSuffix: true,
+          locale: ptBR
+        });
+      }
+      
+      // Se for um número (timestamp)
+      if (typeof date === 'number') {
+        return formatDistanceToNow(new Date(date), {
+          addSuffix: true,
+          locale: ptBR
+        });
+      }
+      
+      return '';
+    } catch (error) {
+      console.error('Erro ao formatar data:', error);
+      return '';
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6 p-6 max-w-2xl mx-auto">
@@ -91,41 +229,42 @@ const SocialFeed = () => {
   }
 
   return (
-    <div className="space-y-6 p-6 max-w-2xl mx-auto">
+    <div className="space-y-6 p-4 sm:p-6 max-w-2xl mx-auto">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Rede Social</h1>
-        <p className="text-gray-600 mt-2">Compartilhe seu progresso e se inspire com a comunidade</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Rede Social</h1>
+        <p className="text-sm sm:text-base text-gray-600 mt-2">Compartilhe seu progresso e se inspire com a comunidade</p>
       </div>
 
       {/* Nova Postagem */}
       <Card>
-        <CardHeader>
+        <CardHeader className="p-4 sm:p-6">
           <div className="flex items-center space-x-3">
-            <Avatar>
+            <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
               <AvatarImage src={user?.avatar} />
               <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                {user?.name.charAt(0)}
+                {user?.name?.charAt(0) || '?'}
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-medium">{user?.name}</p>
-              <p className="text-sm text-gray-500">O que você quer compartilhar hoje?</p>
+              <p className="font-medium text-sm sm:text-base">{user?.name}</p>
+              <p className="text-xs sm:text-sm text-gray-500">O que você quer compartilhar hoje?</p>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           <div className="space-y-4">
             <Textarea
               placeholder="Compartilhe seu progresso, uma dica ou como foi seu treino..."
               value={newPost}
               onChange={(e) => setNewPost(e.target.value)}
-              className="min-h-[100px]"
+              className="min-h-[100px] text-sm sm:text-base"
             />
             <div className="flex flex-wrap gap-2">
               <Button
                 variant={selectedType === 'progress' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedType('progress')}
+                className="text-xs sm:text-sm"
               >
                 Progresso
               </Button>
@@ -133,6 +272,7 @@ const SocialFeed = () => {
                 variant={selectedType === 'workout' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedType('workout')}
+                className="text-xs sm:text-sm"
               >
                 Treino
               </Button>
@@ -140,6 +280,7 @@ const SocialFeed = () => {
                 variant={selectedType === 'diet' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedType('diet')}
+                className="text-xs sm:text-sm"
               >
                 Dieta
               </Button>
@@ -147,21 +288,79 @@ const SocialFeed = () => {
                 variant={selectedType === 'general' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setSelectedType('general')}
+                className="text-xs sm:text-sm"
               >
                 Geral
               </Button>
             </div>
-            <div className="flex justify-between items-center">
-              <div className="flex space-x-2">
-                <Button variant="outline" size="sm">📸 Foto</Button>
-                <Button variant="outline" size="sm">🎥 Vídeo</Button>
+
+            {/* Preview das mídias selecionadas */}
+            {selectedFiles.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {selectedFiles.map((file, index) => (
+                  <div key={index} className="relative group aspect-square">
+                    {file.type.startsWith('image/') ? (
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                    ) : (
+                      <video
+                        src={URL.createObjectURL(file)}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                    )}
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  id="media-upload"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  id="camera-capture"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleCameraCapture}
+                  className="hidden"
+                />
+                <label htmlFor="media-upload" className="flex-1 sm:flex-none">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs sm:text-sm">
+                    <ImageIcon className="w-4 h-4" />
+                    Adicionar Mídia
+                  </Button>
+                </label>
+                <label htmlFor="camera-capture" className="flex-1 sm:flex-none">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto flex items-center justify-center gap-2 text-xs sm:text-sm">
+                    <Camera className="w-4 h-4" />
+                    Tirar Foto
+                  </Button>
+                </label>
               </div>
               <Button 
-                onClick={handlePost}
-                disabled={!newPost.trim()}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                onClick={handleCreatePost}
+                disabled={(!newPost.trim() && selectedFiles.length === 0) || uploading}
+                className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-xs sm:text-sm"
               >
-                Publicar
+                {uploading ? 'Publicando...' : 'Publicar'}
               </Button>
             </div>
           </div>
@@ -169,88 +368,58 @@ const SocialFeed = () => {
       </Card>
 
       {/* Feed de Posts */}
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {posts.map((post) => (
-          <Card key={post.id}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center space-x-3">
-                  <Avatar>
-                    <AvatarImage src={post.authorAvatar} />
-                    <AvatarFallback>{post.authorName.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <p className="font-medium">{post.authorName}</p>
-                      <Badge variant="secondary" className="text-xs">
-                        {post.authorRole}
-                      </Badge>
+          <Card key={post.id} className="bg-white rounded-lg shadow p-4 sm:p-6">
+            <CardHeader className="p-0">
+              <div className="flex items-start space-x-3 sm:space-x-4">
+                <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
+                  <AvatarImage src={post.author?.avatar} />
+                  <AvatarFallback>{post.author?.name?.charAt(0) || '?'}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-sm sm:text-base truncate">{post.author?.name}</h3>
+                      <p className="text-xs sm:text-sm text-gray-500">
+                        {formatPostDate(post.createdAt)}
+                      </p>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {formatDistanceToNow(post.createdAt, { addSuffix: true, locale: ptBR })}
-                    </p>
+                    <Badge variant="outline" className="capitalize text-xs sm:text-sm">
+                      {post.type}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-sm sm:text-base whitespace-pre-wrap break-words">{post.content}</p>
+                  <PostContent post={post} />
+                  <div className="flex items-center space-x-4 mt-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleLike(post.id)}
+                      className="flex items-center space-x-1 text-xs sm:text-sm"
+                    >
+                      <Heart
+                        className={`w-4 h-4 ${
+                          post.likes.includes(user?.id) ? 'fill-red-500 text-red-500' : ''
+                        }`}
+                      />
+                      <span>{post.likes.length}</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex items-center space-x-1 text-xs sm:text-sm"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>{post.comments.length}</span>
+                    </Button>
+                    <Button variant="ghost" size="sm" className="text-xs sm:text-sm">
+                      <Share2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
-                <Badge className={getPostTypeColor(post.type)}>
-                  {getPostTypeLabel(post.type)}
-                </Badge>
               </div>
             </CardHeader>
-            <CardContent>
-              <p className="text-gray-800 mb-4">{post.content}</p>
-              
-              {post.images && post.images.length > 0 && (
-                <div className="mb-4 grid grid-cols-2 gap-2">
-                  {post.images.map((image: string, index: number) => (
-                    <img 
-                      key={index}
-                      src={image} 
-                      alt={`Post content ${index + 1}`} 
-                      className="rounded-lg w-full h-48 object-cover"
-                    />
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center space-x-6 pt-4 border-t">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className={`text-gray-500 hover:text-red-500 ${post.likes.includes(user?.id) ? 'text-red-500' : ''}`}
-                  onClick={() => handleLike(post.id)}
-                >
-                  ❤️ {post.likes.length}
-                </Button>
-                <Button variant="ghost" size="sm" className="text-gray-500 hover:text-blue-500">
-                  💬 {post.comments.length}
-                </Button>
-                <Button variant="ghost" size="sm" className="text-gray-500 hover:text-green-500">
-                  📤 Compartilhar
-                </Button>
-              </div>
-
-              {/* Comentários */}
-              {post.comments.length > 0 && (
-                <div className="mt-4 space-y-4">
-                  {post.comments.map((comment: any) => (
-                    <div key={comment.id} className="flex space-x-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>{comment.authorName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 bg-gray-50 rounded-lg p-3">
-                        <div className="flex items-center space-x-2">
-                          <p className="font-medium text-sm">{comment.authorName}</p>
-                          <p className="text-xs text-gray-500">
-                            {formatDistanceToNow(comment.createdAt.toDate(), { addSuffix: true, locale: ptBR })}
-                          </p>
-                        </div>
-                        <p className="text-sm text-gray-800 mt-1">{comment.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
           </Card>
         ))}
       </div>

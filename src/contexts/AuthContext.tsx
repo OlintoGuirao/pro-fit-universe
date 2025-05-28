@@ -1,87 +1,88 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { authService } from '@/services/authService';
-import { UserType } from '@/types/user';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { User } from '@/types/user';
 
 interface AuthContextType {
-  user: UserType | null;
-  setUser: React.Dispatch<React.SetStateAction<UserType | null>>;
+  user: User | null;
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, userData: Partial<UserType>) => Promise<void>;
   logout: () => Promise<void>;
-  isLoading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  loading: true,
+  login: async () => {},
+  logout: async () => {}
+});
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userData = await authService.getCurrentUserData(firebaseUser);
-          setUser(userData);
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setUser({
+              id: firebaseUser.uid,
+              ...userDoc.data()
+            } as User);
+          }
         } catch (error) {
           console.error('Erro ao carregar dados do usuário:', error);
-          setUser(null);
         }
       } else {
         setUser(null);
       }
-      setIsLoading(false);
+      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
-    setIsLoading(true);
     try {
-      const { userData } = await authService.login(email, password);
-      setUser(userData);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      
+      if (userDoc.exists()) {
+        setUser({
+          id: userCredential.user.uid,
+          ...userDoc.data()
+        } as User);
+      }
     } catch (error) {
+      console.error('Erro ao fazer login:', error);
       throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const register = async (email: string, password: string, userData: Partial<UserType>) => {
-    setIsLoading(true);
-    try {
-      const { userData: newUserData } = await authService.register(email, password, userData);
-      setUser(newUserData as UserType);
-    } catch (error) {
-      throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      await authService.logout();
+      await signOut(auth);
       setUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
+      throw error;
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, login, register, logout, isLoading }}>
-      {children}
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

@@ -303,15 +303,21 @@ export function subscribeToMessages(userId1: string, userId2: string, callback: 
 }
 
 // Funções para o Feed Social
-export async function createPost(authorId: string, content: string, type: 'progress' | 'workout' | 'diet' | 'general', images?: string[], videos?: string[]) {
+export async function createPost(
+  authorId: string,
+  content: string,
+  type: 'progress' | 'workout' | 'diet' | 'general',
+  images: string[] = [],
+  videos: string[] = []
+) {
   try {
     const postsRef = collection(db, 'posts');
     const postData = {
       authorId,
       content,
       type,
-      images: images || [],
-      videos: videos || [],
+      images,
+      videos,
       likes: [],
       comments: [],
       createdAt: Timestamp.now()
@@ -357,30 +363,34 @@ export async function getPosts() {
   }
 }
 
-export function subscribeToPosts(callback: (posts: any[]) => void) {
-  const postsRef = collection(db, 'posts');
-  const q = query(postsRef, orderBy('createdAt', 'desc'));
-
+export const subscribeToPosts = (callback: (posts: Post[]) => void) => {
+  const q = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+  
   return onSnapshot(q, async (snapshot) => {
-    const posts = await Promise.all(snapshot.docs.map(async docSnapshot => {
-      const postData = docSnapshot.data();
-      const authorDocRef = doc(db, 'users', postData.authorId);
-      const authorDoc = await getDoc(authorDocRef);
-      const authorData = authorDoc.data();
-      
-      return {
-        id: docSnapshot.id,
-        ...postData,
-        authorName: authorData?.name || 'Usuário',
-        authorAvatar: authorData?.avatar,
-        authorRole: authorData?.level === 1 ? 'Aluno' : authorData?.level === 2 ? 'Professor' : 'Admin',
-        createdAt: postData.createdAt?.toDate()
-      };
-    }));
+    const posts = await Promise.all(
+      snapshot.docs.map(async (docSnapshot) => {
+        const postData = docSnapshot.data();
+        const authorDocRef = doc(db, 'users', postData.authorId);
+        const authorDoc = await getDoc(authorDocRef);
+        const authorData = authorDoc.data();
+
+        return {
+          id: docSnapshot.id,
+          ...postData,
+          createdAt: postData.createdAt,
+          author: {
+            id: postData.authorId,
+            name: authorData?.name || 'Usuário',
+            avatar: authorData?.avatar || '',
+            role: authorData?.level === 1 ? 'Aluno' : authorData?.level === 2 ? 'Professor' : 'Admin'
+          }
+        };
+      })
+    );
 
     callback(posts);
   });
-}
+};
 
 export async function likePost(postId: string, userId: string) {
   try {
