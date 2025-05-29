@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import { ptBR } from 'date-fns/locale';
 import { Heart, MessageCircle, Share2, Image as ImageIcon, Video, X, Camera } from 'lucide-react';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { Timestamp } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 const SocialFeed = () => {
   const { user } = useAuth();
@@ -19,22 +19,37 @@ const SocialFeed = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [selectedType, setSelectedType] = useState<'progress' | 'workout' | 'diet' | 'general'>('general');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [lastUpdate, setLastUpdate] = useState(Date.now());
 
   useEffect(() => {
-    if (!user) return;
-
-    const unsubscribe = subscribeToPosts((updatedPosts) => {
-      console.log('Posts recebidos:', updatedPosts);
-      setPosts(updatedPosts);
+    if (!user) {
       setLoading(false);
-    });
+      setError('Usuário não autenticado');
+      return;
+    }
 
-    return () => unsubscribe();
-  }, [user]);
+    try {
+      const unsubscribe = subscribeToPosts((updatedPosts) => {
+        console.log('Posts recebidos:', updatedPosts);
+        setPosts(updatedPosts);
+        setLoading(false);
+        setError(null);
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    } catch (error) {
+      console.error('Erro ao configurar feed social:', error);
+      setError('Erro ao carregar o feed social');
+      setLoading(false);
+    }
+  }, [user, lastUpdate]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -98,7 +113,10 @@ const SocialFeed = () => {
   };
 
   const handleCreatePost = async () => {
-    if (!user || (!newPost.trim() && selectedFiles.length === 0)) return;
+    if (!user || (!newPost.trim() && selectedFiles.length === 0)) {
+      console.log('Validação falhou:', { user, newPost, selectedFiles });
+      return;
+    }
 
     try {
       setUploading(true);
@@ -107,26 +125,38 @@ const SocialFeed = () => {
       
       if (selectedFiles.length > 0) {
         try {
+          console.log('Iniciando upload de arquivos:', selectedFiles);
           const uploadResult = await uploadFiles(selectedFiles);
           images = uploadResult.images;
           videos = uploadResult.videos;
           console.log('Upload concluído - Imagens:', images, 'Vídeos:', videos);
         } catch (error) {
-          console.error('Erro no upload:', error);
+          console.error('Erro detalhado no upload:', error);
           alert(`Erro ao fazer upload dos arquivos: ${error.message}`);
           return;
         }
       }
 
-      console.log('Criando post...');
+      console.log('Dados do post a ser criado:', {
+        authorId: user.id,
+        content: newPost,
+        type: selectedType,
+        images,
+        videos
+      });
+
       await createPost(user.id, newPost, selectedType, images, videos);
       console.log('Post criado com sucesso');
 
       setNewPost('');
       setSelectedFiles([]);
+      
+      setLastUpdate(Date.now());
+      
+      toast.success('Post publicado com sucesso!');
     } catch (error) {
-      console.error('Erro ao criar post:', error);
-      alert(`Erro ao criar post: ${error.message}`);
+      console.error('Erro detalhado ao criar post:', error);
+      toast.error(`Erro ao criar post: ${error.message}`);
     } finally {
       setUploading(false);
     }
@@ -249,229 +279,110 @@ const SocialFeed = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6 p-6 max-w-2xl mx-auto">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 p-4 sm:p-6 max-w-2xl mx-auto">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Rede Social</h1>
-        <p className="text-sm sm:text-base text-gray-600 mt-2">Compartilhe seu progresso e se inspire com a comunidade</p>
-      </div>
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+          <strong className="font-bold">Erro!</strong>
+          <span className="block sm:inline"> {error}</span>
+        </div>
+      )}
 
-      {/* Nova Postagem */}
-      <Card>
-        <CardHeader className="p-4 sm:p-6">
-          <div className="flex items-center space-x-3">
-            <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-              <AvatarImage src={user?.avatar} />
-              <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                {user?.name?.charAt(0) || '?'}
-              </AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="font-medium text-sm sm:text-base">{user?.name}</p>
-              <p className="text-xs sm:text-sm text-gray-500">O que você quer compartilhar hoje?</p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 sm:p-6">
-          <div className="space-y-4">
-            <Textarea
-              placeholder="Compartilhe seu progresso, uma dica ou como foi seu treino..."
-              value={newPost}
-              onChange={(e) => setNewPost(e.target.value)}
-              className="min-h-[100px] text-sm sm:text-base"
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={selectedType === 'progress' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedType('progress')}
-                className="text-xs sm:text-sm"
-              >
-                Progresso
-              </Button>
-              <Button
-                variant={selectedType === 'workout' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedType('workout')}
-                className="text-xs sm:text-sm"
-              >
-                Treino
-              </Button>
-              <Button
-                variant={selectedType === 'diet' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedType('diet')}
-                className="text-xs sm:text-sm"
-              >
-                Dieta
-              </Button>
-              <Button
-                variant={selectedType === 'general' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedType('general')}
-                className="text-xs sm:text-sm"
-              >
-                Geral
-              </Button>
-            </div>
-
-            {/* Preview das mídias selecionadas */}
-            {selectedFiles.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {selectedFiles.map((file, index) => (
-                  <div key={index} className="relative group aspect-square">
-                    {file.type.startsWith('image/') ? (
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={`Preview ${index + 1}`}
-                        className="w-full h-full object-cover rounded-lg"
-                      />
-                    ) : (
-                      <video
-                        src={URL.createObjectURL(file)}
-                        className="w-full h-full object-cover rounded-lg"
-                      />
-                    )}
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+      {loading ? (
+        <div className="flex justify-center items-center h-32">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <div className="space-y-6 p-4 sm:p-6 max-w-2xl mx-auto">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center space-x-4">
+                <Avatar>
+                  <AvatarImage src={user?.avatar || ''} />
+                  <AvatarFallback>{user?.name?.[0] || 'U'}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <Textarea
+                    placeholder="Compartilhe seu progresso..."
+                    value={newPost}
+                    onChange={(e) => setNewPost(e.target.value)}
+                    className="min-h-[100px]"
+                  />
+                </div>
               </div>
-            )}
-
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <input
-                ref={fileInputRef}
-                type="file"
-                id="media-upload"
-                multiple
-                accept="image/*,video/*"
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <input
-                ref={cameraInputRef}
-                type="file"
-                id="camera-capture"
-                accept="image/*"
-                capture="environment"
-                onChange={handleCameraCapture}
-                className="hidden"
-              />
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-xs sm:text-sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImageIcon className="w-4 h-4" />
-                Adicionar Mídia
-              </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 text-xs sm:text-sm"
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                <Camera className="w-4 h-4" />
-                Tirar Foto
-              </Button>
-            </div>
-
-            <Button 
-              onClick={handleCreatePost}
-              disabled={(!newPost.trim() && selectedFiles.length === 0) || uploading}
-              className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-xs sm:text-sm"
-            >
-              {uploading ? 'Publicando...' : 'Publicar'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Feed de Posts */}
-      <div className="space-y-4 sm:space-y-6">
-        {posts.length === 0 ? (
-          <Card className="p-8 text-center">
-            <p className="text-gray-500">Nenhum post encontrado. Seja o primeiro a compartilhar!</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ImageIcon className="h-4 w-4 mr-2" />
+                    Imagem
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    <Camera className="h-4 w-4 mr-2" />
+                    Câmera
+                  </Button>
+                </div>
+                <Button
+                  onClick={handleCreatePost}
+                  disabled={!newPost.trim() && selectedFiles.length === 0 || uploading}
+                >
+                  {uploading ? 'Publicando...' : 'Publicar'}
+                </Button>
+              </div>
+            </CardContent>
           </Card>
-        ) : (
-          posts.map((post) => (
-            <Card key={post.id} className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <CardHeader className="p-0">
-                <div className="flex items-start space-x-3 sm:space-x-4">
-                  <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-                    <AvatarImage src={post.author?.avatar} />
-                    <AvatarFallback>{post.author?.name?.charAt(0) || '?'}</AvatarFallback>
+
+          {posts.map((post) => (
+            <Card key={post.id}>
+              <CardHeader>
+                <div className="flex items-center space-x-4">
+                  <Avatar>
+                    <AvatarImage src={post.author?.avatar || ''} />
+                    <AvatarFallback>{post.author?.name?.[0] || 'U'}</AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <h3 className="font-semibold text-sm sm:text-base truncate">
-                          {post.author?.name || 'Usuário'}
-                        </h3>
-                        <p className="text-xs sm:text-sm text-gray-500">
-                          {formatPostDate(post.createdAt)}
-                        </p>
-                      </div>
-                      <Badge variant="outline" className="capitalize text-xs sm:text-sm">
-                        {getPostTypeLabel(post.type)}
-                      </Badge>
-                    </div>
-                    {post.content && (
-                      <p className="mt-2 text-sm sm:text-base whitespace-pre-wrap break-words">
-                        {post.content}
-                      </p>
-                    )}
-                    <PostContent post={post} />
-                    <div className="flex items-center space-x-4 mt-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleLike(post.id)}
-                        className="flex items-center space-x-1 text-xs sm:text-sm"
-                      >
-                        <Heart
-                          className={`w-4 h-4 ${
-                            post.likes && post.likes.includes(user?.id) ? 'fill-red-500 text-red-500' : ''
-                          }`}
-                        />
-                        <span>{post.likes ? post.likes.length : 0}</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex items-center space-x-1 text-xs sm:text-sm"
-                      >
-                        <MessageCircle className="w-4 h-4" />
-                        <span>{post.comments ? post.comments.length : 0}</span>
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-xs sm:text-sm">
-                        <Share2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+                  <div>
+                    <p className="font-medium">{post.author?.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {formatDistanceToNow(post.createdAt, { addSuffix: true, locale: ptBR })}
+                    </p>
                   </div>
                 </div>
               </CardHeader>
+              <CardContent>
+                <p className="mb-4">{post.content}</p>
+                <PostContent post={post} />
+                <div className="flex items-center space-x-4 mt-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleLike(post.id)}
+                  >
+                    <Heart className={`h-4 w-4 mr-2 ${post.likes?.includes(user?.id) ? 'fill-red-500 text-red-500' : ''}`} />
+                    {post.likes?.length || 0}
+                  </Button>
+                  <Button variant="ghost" size="sm">
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    {post.comments?.length || 0}
+                  </Button>
+                  <Button variant="ghost" size="sm">
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Compartilhar
+                  </Button>
+                </div>
+              </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

@@ -73,7 +73,7 @@ export const authService = {
       
       return { user, userData: userDoc };
     } catch (error) {
-      console.error('Erro detalhado no cadastro:', error);
+      console.error('Erro ao registrar usuário:', error);
       throw error;
     }
   },
@@ -115,7 +115,7 @@ export const authService = {
         throw new Error('Dados do usuário não encontrados no Firestore');
       }
     } catch (error) {
-      console.error('Erro detalhado no login:', error);
+      console.error('Erro ao fazer login:', error);
       throw error;
     }
   },
@@ -125,7 +125,7 @@ export const authService = {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error('Erro no logout:', error);
+      console.error('Erro ao fazer logout:', error);
       throw error;
     }
   },

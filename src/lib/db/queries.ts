@@ -1,5 +1,6 @@
 import { db } from '../firebase';
 import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc, arrayUnion } from 'firebase/firestore';
+import { auth } from '../firebase';
 
 // Função para criar um novo usuário
 export const createUser = async (userId: string, userData: any) => {
@@ -52,24 +53,31 @@ export const updateUser = async (userId: string, userData: any) => {
 // Função para buscar mensagens entre dois usuários
 export const getMessagesBetweenUsers = async (userId1: string, userId2: string, messageLimit: number = 50) => {
   try {
+    console.log('Buscando mensagens entre:', userId1, userId2);
     const messagesCollection = collection(db, 'messages');
     const q = query(
       messagesCollection,
       where('senderId', 'in', [userId1, userId2]),
       where('receiverId', 'in', [userId1, userId2]),
-      orderBy('createdAt'),
+      orderBy('createdAt', 'desc'),
       limit(messageLimit)
     );
 
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      senderId: doc.data().senderId,
-      receiverId: doc.data().receiverId,
-      content: doc.data().content,
-      isRead: doc.data().isRead,
-      createdAt: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
-    }));
+    const messages = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      console.log('Mensagem encontrada:', data);
+      return {
+        id: doc.id,
+        senderId: data.senderId,
+        receiverId: data.receiverId,
+        content: data.content,
+        isRead: data.isRead,
+        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+      };
+    });
+    console.log('Total de mensagens encontradas:', messages.length);
+    return messages;
   } catch (error) {
     console.error("Erro ao buscar mensagens:", error);
     return [];
@@ -79,15 +87,28 @@ export const getMessagesBetweenUsers = async (userId1: string, userId2: string, 
 // Função para enviar uma mensagem
 export const sendMessage = async (senderId: string, receiverId: string, content: string) => {
   try {
-    await addDoc(collection(db, 'messages'), {
+    console.log('Enviando mensagem:', { senderId, receiverId, content });
+    
+    const messageData = {
       senderId,
       receiverId,
       content,
       isRead: false,
       createdAt: new Date(),
-    });
+    };
+
+    console.log('Dados da mensagem:', messageData);
+    
+    const docRef = await addDoc(collection(db, 'messages'), messageData);
+    console.log('Mensagem enviada com sucesso, ID:', docRef.id);
+    
+    return {
+      id: docRef.id,
+      ...messageData
+    };
   } catch (error) {
     console.error("Erro ao enviar mensagem:", error);
+    throw error;
   }
 };
 
@@ -159,17 +180,66 @@ export const getUnreadMessagesCountForStudent = async (studentId: string, traine
 // Função para associar um aluno a um treinador
 export const associateStudentWithTrainer = async (studentId: string, trainerId: string) => {
   try {
-    // Atualizar o documento do aluno para incluir o trainerId
-    const studentRef = doc(db, 'users', studentId);
-    await updateDoc(studentRef, { trainerId: trainerId });
+    // Verificar se o usuário atual é um administrador ou professor
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error('Usuário não autenticado');
+    }
 
-    // Atualizar o documento do treinador para incluir o studentId na lista de alunos
-    const trainerRef = doc(db, 'users', trainerId);
-    await updateDoc(trainerRef, {
-      students: arrayUnion(studentId) // Use arrayUnion para evitar duplicatas
+    const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+    if (!userDoc.exists()) {
+      throw new Error('Usuário não encontrado');
+    }
+
+    const userData = userDoc.data();
+    if (userData.level !== 3 && userData.level !== 2) {
+      throw new Error('Apenas administradores e professores podem associar alunos');
+    }
+
+    // Verificar se o aluno existe
+    const studentDoc = await getDoc(doc(db, 'users', studentId));
+    if (!studentDoc.exists()) {
+      throw new Error('Aluno não encontrado');
+    }
+
+    const studentData = studentDoc.data();
+    if (studentData.level !== 1) {
+      throw new Error('Usuário selecionado não é um aluno');
+    }
+
+    // Verificar se o professor existe
+    const trainerDoc = await getDoc(doc(db, 'users', trainerId));
+    if (!trainerDoc.exists()) {
+      throw new Error('Professor não encontrado');
+    }
+
+    // Verificar se o professor tem nível 2
+    const trainerData = trainerDoc.data();
+    if (trainerData.level !== 2) {
+      throw new Error('Usuário selecionado não é um professor');
+    }
+
+    // Verificar se o aluno já está associado a outro professor
+    if (studentData.trainerId && studentData.trainerId !== trainerId) {
+      throw new Error('Aluno já está associado a outro professor');
+    }
+
+    // Atualizar o documento do aluno com o ID do professor
+    await updateDoc(doc(db, 'users', studentId), {
+      trainerId: trainerId,
+      updatedAt: new Date()
     });
+
+    // Atualizar a lista de alunos do professor usando arrayUnion
+    await updateDoc(doc(db, 'users', trainerId), {
+      students: arrayUnion(studentId),
+      updatedAt: new Date()
+    });
+
+    return true;
   } catch (error) {
-    console.error("Erro ao associar aluno ao treinador:", error);
+    console.error('Erro ao associar aluno ao treinador:', error);
+    throw error;
   }
 };
 
@@ -209,32 +279,64 @@ export const getStudentsByTrainer = async (trainerId: string) => {
 
 // Função para escutar mensagens em tempo real entre dois usuários
 export const subscribeToMessages = (userId1: string, userId2: string, callback: (messages: any[]) => void) => {
-  const messagesCollection = collection(db, 'messages');
-  const q = query(
-    messagesCollection,
-    where('senderId', 'in', [userId1, userId2]),
-    where('receiverId', 'in', [userId1, userId2]),
-    orderBy('createdAt')
-  );
+  try {
+    console.log('Iniciando subscrição de mensagens entre:', userId1, userId2);
+    
+    const messagesCollection = collection(db, 'messages');
+    const q = query(
+      messagesCollection,
+      where('senderId', 'in', [userId1, userId2]),
+      where('receiverId', 'in', [userId1, userId2]),
+      orderBy('createdAt', 'desc')
+    );
 
-  const unsubscribe = onSnapshot(q, (querySnapshot) => {
-    const messages = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      senderId: doc.data().senderId,
-      receiverId: doc.data().receiverId,
-      content: doc.data().content,
-      isRead: doc.data().isRead,
-      createdAt: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
-    }));
-    callback(messages);
-  });
+    const unsubscribe = onSnapshot(q, 
+      (querySnapshot) => {
+        try {
+          console.log('Novas mensagens recebidas:', querySnapshot.size);
+          const messages = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            console.log('Dados da mensagem:', data);
+            return {
+              id: doc.id,
+              senderId: data.senderId,
+              receiverId: data.receiverId,
+              content: data.content,
+              isRead: data.isRead,
+              createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+            };
+          });
+          console.log('Mensagens processadas:', messages);
+          callback(messages);
+        } catch (error) {
+          console.error('Erro ao processar mensagens:', error);
+          callback([]);
+        }
+      },
+      (error) => {
+        console.error('Erro na subscrição de mensagens:', error);
+        callback([]);
+      }
+    );
 
-  return unsubscribe;
+    return unsubscribe;
+  } catch (error) {
+    console.error('Erro ao configurar subscrição de mensagens:', error);
+    return () => {};
+  }
 };
 
 // Add missing social functions for SocialFeed
 export const createPost = async (authorId: string, content: string, type: string, images: string[], videos: string[]) => {
   try {
+    console.log('Iniciando criação de post no Firestore:', {
+      authorId,
+      content,
+      type,
+      images,
+      videos
+    });
+
     const postData = {
       authorId,
       content,
@@ -245,54 +347,75 @@ export const createPost = async (authorId: string, content: string, type: string
       comments: [],
       createdAt: new Date(),
     };
-    await addDoc(collection(db, 'posts'), postData);
+
+    const docRef = await addDoc(collection(db, 'posts'), postData);
+    console.log('Post criado com sucesso, ID:', docRef.id);
+    return docRef.id;
   } catch (error) {
-    console.error("Erro ao criar post:", error);
+    console.error("Erro detalhado ao criar post:", error);
+    throw new Error(`Falha ao criar post: ${error.message}`);
   }
 };
 
 export const subscribeToPosts = (callback: (posts: any[]) => void) => {
-  const postsCollection = collection(db, 'posts');
-  const q = query(postsCollection, orderBy('createdAt', 'desc'));
+  try {
+    const postsCollection = collection(db, 'posts');
+    const q = query(postsCollection, orderBy('createdAt', 'desc'));
 
-  const unsubscribe = onSnapshot(q, async (querySnapshot) => {
-    const posts = await Promise.all(
-      querySnapshot.docs.map(async (docSnapshot) => {
-        const postData = docSnapshot.data();
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+      try {
+        const posts = await Promise.all(
+          querySnapshot.docs.map(async (docSnapshot) => {
+            const postData = docSnapshot.data();
+            
+            // Get author data
+            let authorData = null;
+            if (postData.authorId) {
+              try {
+                const authorDoc = await getDoc(doc(db, 'users', postData.authorId));
+                if (authorDoc.exists()) {
+                  authorData = authorDoc.data();
+                }
+              } catch (error) {
+                console.error("Erro ao buscar dados do autor:", error);
+              }
+            }
+
+            return {
+              id: docSnapshot.id,
+              authorId: postData.authorId,
+              content: postData.content,
+              type: postData.type,
+              images: postData.images || [],
+              videos: postData.videos || [],
+              likes: postData.likes || [],
+              comments: postData.comments || [],
+              createdAt: postData.createdAt?.toDate() || new Date(),
+              author: {
+                id: postData.authorId,
+                name: authorData?.name || 'Usuário',
+                avatar: authorData?.avatar || null,
+                role: authorData?.level === 2 ? 'trainer' : 'student'
+              }
+            };
+          })
+        );
         
-        // Get author data
-        let authorData = null;
-        if (postData.authorId) {
-          const authorDoc = await getDoc(doc(db, 'users', postData.authorId));
-          if (authorDoc.exists()) {
-            authorData = authorDoc.data();
-          }
-        }
+        callback(posts);
+      } catch (error) {
+        console.error("Erro ao processar posts:", error);
+        callback([]);
+      }
+    }, (error) => {
+      console.error("Erro na subscrição de posts:", error);
+      callback([]);
+    });
 
-        return {
-          id: docSnapshot.id,
-          authorId: postData.authorId,
-          content: postData.content,
-          type: postData.type,
-          images: postData.images || [],
-          videos: postData.videos || [],
-          likes: postData.likes || [],
-          comments: postData.comments || [],
-          createdAt: postData.createdAt?.toDate() || new Date(),
-          author: {
-            id: postData.authorId,
-            name: authorData?.name || 'Usuário',
-            avatar: authorData?.avatar || null,
-            role: authorData?.level === 2 ? 'trainer' : 'student'
-          }
-        };
-      })
-    );
-    
-    callback(posts);
-  });
-
-  return unsubscribe;
+    return unsubscribe;
+  } catch (error) {
+    console.error("Erro ao configurar subscrição de posts:", error);
+    return () => {};
+  }
 };
 
 export const likePost = async (postId: string, userId: string) => {

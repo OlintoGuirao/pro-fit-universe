@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,6 +15,9 @@ import {
 import { Message } from '@/types/message';
 import StudentChatView from '@/components/Messages/StudentChatView';
 import TrainerChatView from '@/components/Messages/TrainerChatView';
+import { toast } from 'react-hot-toast';
+import { collection, addDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface User {
   id: string;
@@ -74,39 +76,66 @@ const Messages = () => {
   useEffect(() => {
     if (!user || !selectedUser) return;
 
-    try {
-      console.log('Iniciando escuta de mensagens entre:', user.id, selectedUser.id);
-      
-      // Marcar mensagens como lidas
-      if (user.level === 1) {
-        markMessagesAsRead(selectedUser.id, user.id);
-      } else {
-        markMessagesAsRead(selectedUser.id, user.id);
+    let unsubscribe: (() => void) | undefined;
+
+    const setupMessages = async () => {
+      try {
+        console.log('Iniciando escuta de mensagens entre:', user.id, selectedUser.id);
+        
+        // Carregar mensagens existentes primeiro
+        const existingMessages = await getMessagesBetweenUsers(user.id, selectedUser.id);
+        console.log('Mensagens existentes carregadas:', existingMessages);
+        setMessages(existingMessages);
+        
+        // Marcar mensagens como lidas
+        if (user.level === 1) {
+          await markMessagesAsRead(selectedUser.id, user.id);
+        } else {
+          await markMessagesAsRead(selectedUser.id, user.id);
+        }
+
+        // Escutar mensagens em tempo real
+        unsubscribe = subscribeToMessages(user.id, selectedUser.id, (newMessages) => {
+          console.log('Novas mensagens recebidas:', newMessages);
+          if (Array.isArray(newMessages)) {
+            // Usar um Map para garantir que não haja duplicatas
+            const messageMap = new Map();
+            
+            // Adicionar todas as mensagens ao Map, usando o ID como chave
+            newMessages.forEach(msg => {
+              messageMap.set(msg.id, msg);
+            });
+            
+            // Converter o Map de volta para array e ordenar por data
+            const uniqueMessages = Array.from(messageMap.values()).sort((a, b) => 
+              (a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt)).getTime() - 
+              (b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt)).getTime()
+            );
+            
+            setMessages(uniqueMessages);
+          } else {
+            console.error('Formato inválido de mensagens recebidas:', newMessages);
+          }
+        });
+      } catch (error) {
+        console.error('Erro ao carregar mensagens:', error);
+        alert('Erro ao carregar mensagens. Por favor, tente novamente.');
       }
+    };
 
-      // Escutar mensagens em tempo real
-      const unsubscribe = subscribeToMessages(user.id, selectedUser.id, (newMessages) => {
-        console.log('Novas mensagens recebidas:', newMessages);
-        setMessages(newMessages);
-      });
+    setupMessages();
 
-      // Limpar a escuta quando o componente for desmontado ou o usuário selecionado mudar
-      return () => {
-        console.log('Limpando escuta de mensagens');
+    return () => {
+      console.log('Limpando escuta de mensagens');
+      if (unsubscribe) {
         unsubscribe();
-      };
-    } catch (error) {
-      console.error('Erro ao carregar mensagens:', error);
-      alert('Erro ao carregar mensagens. Por favor, tente novamente.');
-    }
+      }
+    };
   }, [user, selectedUser]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !user || !selectedUser) {
-      console.log('Dados inválidos:', { newMessage, user, selectedUser });
-      return;
-    }
+    if (!newMessage.trim() || !user || !selectedUser) return;
 
     try {
       console.log('Enviando mensagem:', {
@@ -115,11 +144,14 @@ const Messages = () => {
         content: newMessage.trim()
       });
 
-      await sendMessage(user.id, selectedUser.id, newMessage.trim());
+      const sentMessage = await sendMessage(user.id, selectedUser.id, newMessage.trim());
+      console.log('Mensagem enviada com sucesso:', sentMessage);
+      
+      // Não precisamos atualizar o estado aqui, pois o listener do Firestore já fará isso
       setNewMessage('');
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
-      alert('Erro ao enviar mensagem. Por favor, tente novamente.');
+      toast.error('Erro ao enviar mensagem. Tente novamente.');
     }
   };
 

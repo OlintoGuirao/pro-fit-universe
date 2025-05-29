@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { associateStudentWithTrainer } from '@/lib/db/queries';
+import { toast } from 'react-hot-toast';
 
 interface User {
   id: string;
@@ -48,28 +49,17 @@ const Users = () => {
     }
   };
 
-  const handleAssociate = async () => {
-    if (!selectedStudent || !selectedTrainer) {
-      alert('Por favor, selecione um aluno e um professor');
-      return;
-    }
-
+  const handleAssociate = async (studentId: string, trainerId: string) => {
     try {
       setAssociating(true);
-      console.log('Iniciando associação:', {
-        student: selectedStudent,
-        trainer: selectedTrainer
-      });
-      
-      await associateStudentWithTrainer(selectedStudent.id, selectedTrainer.id);
-      alert('Aluno associado ao professor com sucesso!');
-      await loadUsers(); // Recarregar lista de usuários
+      await associateStudentWithTrainer(studentId, trainerId);
+      toast.success('Aluno associado ao professor com sucesso!');
+      await loadUsers();
       setSelectedStudent(null);
       setSelectedTrainer(null);
     } catch (error) {
       console.error('Erro ao associar:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      alert(`Erro ao associar aluno ao professor: ${errorMessage}`);
+      toast.error(error instanceof Error ? error.message : 'Erro ao associar aluno ao professor');
     } finally {
       setAssociating(false);
     }
@@ -189,7 +179,7 @@ const Users = () => {
           {selectedStudent && selectedTrainer && (
             <div className="mt-8 flex justify-center">
               <Button
-                onClick={handleAssociate}
+                onClick={() => handleAssociate(selectedStudent.id, selectedTrainer.id)}
                 disabled={associating}
                 className="w-full md:w-auto"
               >

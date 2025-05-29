@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -19,13 +18,13 @@ interface Suggestion {
 
 interface SuggestionContextType {
   suggestions: Suggestion[];
-  sendSuggestion: (content: string, type: 'workout' | 'diet', studentId: string) => Promise<void>;
-  updateSuggestionStatus: (suggestionId: string, status: 'accepted' | 'rejected') => Promise<void>;
-  getStudentsByTrainer: (trainerId: string) => Promise<Student[]>;
   workoutSuggestion: string;
-  setWorkoutSuggestion: (suggestion: string) => void;
   dietSuggestion: string;
-  setDietSuggestion: (suggestion: string) => void;
+  setWorkoutSuggestion: React.Dispatch<React.SetStateAction<string>>;
+  setDietSuggestion: React.Dispatch<React.SetStateAction<string>>;
+  sendSuggestion: (content: string, type: 'workout' | 'diet', studentId: string) => Promise<void>;
+  getStudentsByTrainer: (trainerId: string) => Promise<Student[]>;
+  updateSuggestionStatus: (suggestionId: string, status: 'accepted' | 'rejected') => Promise<void>;
 }
 
 const SuggestionContext = createContext<SuggestionContextType | undefined>(undefined);
@@ -38,13 +37,9 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   useEffect(() => {
     const fetchSuggestions = async () => {
-      if (!user) {
-        console.log('Usuário não autenticado, não buscando sugestões');
-        return;
-      }
+      if (!user) return;
 
       try {
-        console.log('Buscando sugestões para o usuário:', user.id);
         const suggestionsRef = collection(db, 'suggestions');
         const q = query(suggestionsRef, where('trainerId', '==', user.id));
         const querySnapshot = await getDocs(q);
@@ -55,7 +50,6 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           createdAt: doc.data().createdAt?.toDate()
         })) as Suggestion[];
 
-        console.log('Sugestões encontradas:', fetchedSuggestions.length);
         setSuggestions(fetchedSuggestions);
       } catch (error) {
         console.error('Erro ao buscar sugestões:', error);
@@ -136,48 +130,35 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const sendSuggestion = async (content: string, type: 'workout' | 'diet', studentId: string) => {
-    console.log('Verificando usuário:', { user, authLoading });
-
-    if (authLoading) {
-      console.log('Aguardando carregamento da autenticação...');
-      throw new Error('Aguarde o carregamento da autenticação');
-    }
-
     if (!user) {
-      console.error('Usuário não autenticado');
-      throw new Error('Por favor, faça login para enviar sugestões');
+      toast.error('Você precisa estar autenticado para enviar sugestões');
+      return;
     }
 
     try {
-      // Verificar se o aluno existe e está associado ao professor
-      const studentRef = doc(db, 'users', studentId);
-      const studentDoc = await getDoc(studentRef);
-
+      // Buscar dados do aluno
+      const studentDoc = await getDoc(doc(db, 'users', studentId));
       if (!studentDoc.exists()) {
         throw new Error('Aluno não encontrado');
       }
 
       const studentData = studentDoc.data();
-      if (studentData.trainerId !== user.id) {
-        throw new Error('Aluno não está associado a este professor');
-      }
 
-      // Criar a sugestão
-      const suggestionData = {
+      // Criar sugestão
+      const suggestionData: Omit<Suggestion, 'id'> = {
         content,
         type,
         studentId,
         trainerId: user.id,
-        status: 'pending' as const,
+        status: 'pending',
         createdAt: new Date()
       };
 
-      console.log('Criando sugestão:', suggestionData);
-
-      // Salvar no Firestore
       const docRef = await addDoc(collection(db, 'suggestions'), suggestionData);
-      console.log('Sugestão criada com sucesso:', docRef.id);
       
+      // Atualizar estado local
+      setSuggestions(prev => [...prev, { id: docRef.id, ...suggestionData }]);
+
       // Se for dieta, criar o plano de dieta
       if (type === 'diet') {
         try {
@@ -192,10 +173,8 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             createdAt: new Date(),
             isActive: true
           });
-          console.log('Plano de dieta criado com sucesso');
         } catch (dietError) {
           console.error('Erro ao criar plano de dieta:', dietError);
-          // Continua mesmo se der erro na dieta, pois a sugestão já foi criada
         }
       }
 
@@ -212,86 +191,58 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             status: 'pending',
             createdBy: user.id
           });
-          console.log('Treino criado com sucesso');
         } catch (workoutError) {
           console.error('Erro ao criar treino:', workoutError);
-          // Continua mesmo se der erro no treino, pois a sugestão já foi criada
         }
       }
 
-      // Atualizar estado local
-      setSuggestions(prev => [...prev, { id: docRef.id, ...suggestionData }]);
       toast.success(`${type === 'diet' ? 'Dieta' : 'Treino'} enviado com sucesso para o aluno!`);
     } catch (error) {
       console.error('Erro ao enviar sugestão:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      toast.error(`Erro ao enviar: ${errorMessage}`);
-      throw error;
+      toast.error('Erro ao enviar sugestão. Tente novamente.');
     }
   };
 
   const updateSuggestionStatus = async (suggestionId: string, status: 'accepted' | 'rejected') => {
     try {
       const suggestionRef = doc(db, 'suggestions', suggestionId);
-      const suggestionDoc = await getDoc(suggestionRef);
-
-      if (!suggestionDoc.exists()) {
-        throw new Error('Sugestão não encontrada');
-      }
-
-      const suggestionData = suggestionDoc.data();
-      if (suggestionData.studentId !== user?.id && suggestionData.trainerId !== user?.id) {
-        throw new Error('Você não tem permissão para atualizar esta sugestão');
-      }
-
       await updateDoc(suggestionRef, { status });
-
-      setSuggestions(prev =>
-        prev.map(suggestion =>
-          suggestion.id === suggestionId
+      
+      setSuggestions(prev => 
+        prev.map(suggestion => 
+          suggestion.id === suggestionId 
             ? { ...suggestion, status }
             : suggestion
         )
       );
-
+      
       toast.success(`Sugestão ${status === 'accepted' ? 'aceita' : 'rejeitada'} com sucesso!`);
     } catch (error) {
       console.error('Erro ao atualizar status da sugestão:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      toast.error(`Erro ao atualizar status: ${errorMessage}`);
-      throw error;
+      toast.error('Erro ao atualizar status da sugestão');
     }
   };
 
   const getStudentsByTrainer = async (trainerId: string): Promise<Student[]> => {
     try {
-      if (!trainerId) {
-        throw new Error('ID do professor não fornecido');
-      }
-
       const usersRef = collection(db, 'users');
       const q = query(usersRef, where('trainerId', '==', trainerId), where('level', '==', 1));
       const querySnapshot = await getDocs(q);
       
-      const students = querySnapshot.docs.map(doc => ({
+      return querySnapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name,
         email: doc.data().email,
-        trainerId: doc.data().trainerId,
         level: doc.data().level,
         isActive: doc.data().isActive || false,
         createdAt: doc.data().createdAt?.toDate() || new Date(),
+        trainerId: doc.data().trainerId,
         weight: doc.data().weight,
         height: doc.data().height,
         goals: doc.data().goals
       })) as Student[];
-
-      console.log(`Encontrados ${students.length} alunos para o professor ${trainerId}`);
-      return students;
     } catch (error) {
       console.error('Erro ao buscar alunos:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-      toast.error(`Erro ao buscar alunos: ${errorMessage}`);
       return [];
     }
   };
@@ -299,13 +250,13 @@ export const SuggestionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <SuggestionContext.Provider value={{
       suggestions,
-      sendSuggestion,
-      updateSuggestionStatus,
-      getStudentsByTrainer,
       workoutSuggestion,
-      setWorkoutSuggestion,
       dietSuggestion,
-      setDietSuggestion
+      setWorkoutSuggestion,
+      setDietSuggestion,
+      sendSuggestion,
+      getStudentsByTrainer,
+      updateSuggestionStatus
     }}>
       {children}
     </SuggestionContext.Provider>

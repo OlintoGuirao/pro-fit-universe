@@ -3,49 +3,80 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Calendar, Clock, Dumbbell } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useQuery } from '@tanstack/react-query';
+
+interface Workout {
+  id: string;
+  title: string;
+  description: string;
+  exercises: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+  studentId: string;
+  studentName: string;
+  createdBy: string;
+}
 
 const Workout = () => {
-  // Dados fictícios para exemplo
-  const workouts = [
-    {
-      id: 1,
-      name: 'Treino A - Peito e Tríceps',
-      exercises: [
-        { name: 'Supino Reto', sets: 4, reps: 12, weight: '60kg' },
-        { name: 'Supino Inclinado', sets: 3, reps: 12, weight: '50kg' },
-        { name: 'Tríceps Pulley', sets: 3, reps: 15, weight: '30kg' },
-      ],
-      duration: 60,
-      completed: false,
-    },
-    {
-      id: 2,
-      name: 'Treino B - Costas e Bíceps',
-      exercises: [
-        { name: 'Puxada Frontal', sets: 4, reps: 12, weight: '50kg' },
-        { name: 'Remada Curvada', sets: 3, reps: 12, weight: '40kg' },
-        { name: 'Rosca Direta', sets: 3, reps: 12, weight: '20kg' },
-      ],
-      duration: 60,
-      completed: false,
-    },
-    {
-      id: 3,
-      name: 'Treino C - Pernas',
-      exercises: [
-        { name: 'Agachamento', sets: 4, reps: 12, weight: '80kg' },
-        { name: 'Leg Press', sets: 3, reps: 12, weight: '100kg' },
-        { name: 'Extensão', sets: 3, reps: 15, weight: '40kg' },
-      ],
-      duration: 75,
-      completed: false,
-    },
-  ];
+  const { user } = useAuth();
+
+  const { data: workouts = [], isLoading } = useQuery({
+    queryKey: ['student-workouts', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      const workoutsRef = collection(db, 'workouts');
+      const q = query(workoutsRef, where('studentId', '==', user.id));
+      const querySnapshot = await getDocs(q);
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Workout[];
+    }
+  });
+
+  const formatWorkoutTitle = (title: string) => {
+    // Remove "Título:" se existir
+    return title.replace(/^Título:\s*/i, '').trim();
+  };
+
+  const splitWorkoutByDays = (exercises: string) => {
+    // Lista de dias da semana para identificar corretamente
+    const weekDays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+    
+    // Divide o texto em dias usando os dias da semana como separadores
+    const days = exercises.split(new RegExp(`(?=${weekDays.join('|')})`));
+    
+    return days
+      .map(day => {
+        const trimmedDay = day.trim();
+        if (!trimmedDay) return null;
+        
+        // Encontra o primeiro dia da semana no texto
+        const dayMatch = weekDays.find(d => trimmedDay.startsWith(d));
+        if (!dayMatch) return null;
+        
+        // Pega o título (dia + descrição) e o conteúdo
+        const lines = trimmedDay.split('\n');
+        const title = lines[0].trim();
+        const content = lines.slice(1).join('\n').trim();
+        
+        return {
+          title,
+          content
+        };
+      })
+      .filter(Boolean); // Remove dias vazios
+  };
 
   return (
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Meu Treino</h1>
+        <h1 className="text-2xl font-bold">Meus Treinos</h1>
         <Button>
           <Calendar className="mr-2 h-4 w-4" />
           Ver Calendário
@@ -53,71 +84,72 @@ const Workout = () => {
       </div>
 
       <div className="grid gap-6">
-        {workouts.map((workout) => (
-          <Card key={workout.id}>
-            <CardHeader>
-              <div className="flex justify-between items-start">
-                <div>
-                  <CardTitle className="text-xl">{workout.name}</CardTitle>
-                  <div className="flex items-center text-sm text-muted-foreground mt-1">
-                    <Clock className="mr-1 h-4 w-4" />
-                    {workout.duration} minutos
-                  </div>
-                </div>
-                <Button variant={workout.completed ? "secondary" : "default"}>
-                  {workout.completed ? 'Completado' : 'Iniciar Treino'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
+        {isLoading ? (
+          <div className="text-center py-4">Carregando treinos...</div>
+        ) : workouts.length === 0 ? (
+          <div className="text-center py-4 text-gray-500">Nenhum treino disponível ainda</div>
+        ) : (
+          workouts.map((workout) => (
+            <div key={`main-${workout.id}`} className="space-y-6">
+              {splitWorkoutByDays(workout.exercises).map((day, index) => (
+                <Card key={index}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <CardTitle className="text-xl">{day.title}</CardTitle>
+                        <div className="flex items-center text-sm text-muted-foreground mt-1">
+                          <Clock className="mr-1 h-4 w-4" />
+                          Criado em: {workout.createdAt?.toDate().toLocaleDateString('pt-BR')}
+                        </div>
+                      </div>
+                      <Button variant={workout.status === 'completed' ? "secondary" : "default"}>
+                        {workout.status === 'completed' ? 'Completado' : 'Iniciar Treino'}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {workout.description && (
+                        <p className="text-sm text-gray-600">{workout.description}</p>
+                      )}
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <pre className="text-sm font-mono whitespace-pre-wrap leading-relaxed">
+                          {day.content}
+                        </pre>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+
+      {workouts.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Histórico de Treinos</h2>
+          <Card>
+            <CardContent className="p-6">
               <div className="space-y-4">
-                {workout.exercises.map((exercise, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div className="flex items-center">
-                      <Dumbbell className="mr-2 h-4 w-4 text-muted-foreground" />
-                      <span>{exercise.name}</span>
+                {workouts
+                  .filter(workout => workout.status === 'completed')
+                  .map((workout) => (
+                    <div key={`history-${workout.id}`} className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-medium">{formatWorkoutTitle(workout.title)}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Completado em: {workout.createdAt?.toDate().toLocaleDateString('pt-BR')}
+                        </p>
+                      </div>
+                      <Progress value={100} className="w-24" />
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {exercise.sets}x{exercise.reps} • {exercise.weight}
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <div className="mt-8">
-        <h2 className="text-xl font-semibold mb-4">Histórico de Treinos</h2>
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-medium">Treino A - Peito e Tríceps</h3>
-                  <p className="text-sm text-muted-foreground">Completado há 2 dias</p>
-                </div>
-                <Progress value={100} className="w-24" />
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-medium">Treino B - Costas e Bíceps</h3>
-                  <p className="text-sm text-muted-foreground">Completado há 4 dias</p>
-                </div>
-                <Progress value={100} className="w-24" />
-              </div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-medium">Treino C - Pernas</h3>
-                  <p className="text-sm text-muted-foreground">Completado há 6 dias</p>
-                </div>
-                <Progress value={100} className="w-24" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        </div>
+      )}
     </div>
   );
 };
