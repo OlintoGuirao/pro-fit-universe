@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -6,18 +6,40 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Users, Calendar, FileText, Bell } from 'lucide-react';
 import AIChat from './AIChat';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { useSuggestion } from '@/contexts/SuggestionContext';
 
 interface Student {
   id: string;
   name: string;
-  goal: string;
-  lastWorkout: string;
-  progress: number;
-  active: boolean;
+  goal?: string;
+  lastWorkout?: string;
+  progress?: number;
+  active?: boolean;
   photoURL?: string;
+  trainerId?: string;
+  level?: number;
 }
 
 interface Task {
@@ -29,39 +51,27 @@ interface Task {
   status: 'pending' | 'completed' | 'overdue';
 }
 
+interface Workout {
+  id?: string;
+  studentId: string;
+  studentName: string;
+  title: string;
+  description: string;
+  exercises: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+}
+
 const TrainerDashboard = () => {
   const { user } = useAuth();
   
-  console.log('TrainerDashboard montado');
-  console.log('Usuário atual:', user);
-
-  const { data: students = [], isLoading: isLoadingStudents } = useQuery({
-    queryKey: ['trainer-students', user?.id],
-    queryFn: async () => {
-      console.log('Iniciando busca de alunos');
-      if (!user?.id) {
-        console.log('Usuário não tem ID');
-        return [];
-      }
-      
-      console.log('Buscando alunos para o professor:', user.id);
-      const studentsRef = collection(db, 'users');
-      const q = query(studentsRef, where('trainerId', '==', user.id));
-      const querySnapshot = await getDocs(q);
-      
-      console.log('Documentos encontrados:', querySnapshot.docs.length);
-      const students = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('Dados do aluno:', { id: doc.id, ...data });
-        return {
-          id: doc.id,
-          ...data
-        };
-      }) as Student[];
-      
-      return students;
-    }
-  });
+  const [students, setStudents] = useState<Student[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<string>('');
+  const [workoutTitle, setWorkoutTitle] = useState('');
+  const [workoutDescription, setWorkoutDescription] = useState('');
+  const [workoutExercises, setWorkoutExercises] = useState('');
+  const [isCreatingWorkout, setIsCreatingWorkout] = useState(false);
+  const { workoutSuggestion, setWorkoutSuggestion } = useSuggestion();
 
   const { data: tasks = [], isLoading: isLoadingTasks } = useQuery({
     queryKey: ['trainer-tasks', user?.id],
@@ -84,6 +94,90 @@ const TrainerDashboard = () => {
     activeStudents: students.filter(s => s.active).length,
     pendingTasks: tasks.filter(t => t.status === 'pending').length,
     averageRating: 4.8 // TODO: Implementar cálculo real
+  };
+
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!user) return;
+
+      try {
+        if (!user.id) {
+          return;
+        }
+
+        const studentsRef = collection(db, 'users');
+        const q = query(studentsRef, where('trainerId', '==', user.id), where('level', '==', 1));
+        const querySnapshot = await getDocs(q);
+        
+        const studentsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          name: doc.data().name || '',
+          goal: doc.data().goal || '',
+          lastWorkout: doc.data().lastWorkout || '',
+          progress: doc.data().progress || 0,
+          active: doc.data().active || false,
+          photoURL: doc.data().photoURL,
+          trainerId: doc.data().trainerId,
+          level: doc.data().level
+        })) as Student[];
+
+        setStudents(studentsData);
+      } catch (error) {
+        console.error('Erro ao buscar alunos:', error);
+        toast.error('Erro ao carregar lista de alunos');
+      }
+    };
+
+    fetchStudents();
+  }, [user]);
+
+  useEffect(() => {
+    if (workoutSuggestion) {
+      setWorkoutExercises(workoutSuggestion);
+      setWorkoutSuggestion('');
+    }
+  }, [workoutSuggestion, setWorkoutSuggestion]);
+
+  const handleCreateWorkout = async () => {
+    if (!selectedStudent || !workoutTitle || !workoutExercises) {
+      toast.error('Por favor, preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setIsCreatingWorkout(true);
+
+    try {
+      const selectedStudentData = students.find(s => s.id === selectedStudent);
+      
+      if (!selectedStudentData) {
+        throw new Error('Aluno não encontrado');
+      }
+
+      const workoutData: Workout = {
+        studentId: selectedStudent,
+        studentName: selectedStudentData.name,
+        title: workoutTitle,
+        description: workoutDescription,
+        exercises: workoutExercises,
+        createdAt: serverTimestamp(),
+        status: 'pending'
+      };
+
+      await addDoc(collection(db, 'workouts'), workoutData);
+      
+      toast.success('Treino criado e enviado com sucesso!');
+      
+      // Limpar formulário
+      setSelectedStudent('');
+      setWorkoutTitle('');
+      setWorkoutDescription('');
+      setWorkoutExercises('');
+    } catch (error) {
+      console.error('Erro ao criar treino:', error);
+      toast.error('Erro ao criar treino. Tente novamente.');
+    } finally {
+      setIsCreatingWorkout(false);
+    }
   };
 
   return (
@@ -147,7 +241,7 @@ const TrainerDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {isLoadingStudents ? (
+              {isLoadingTasks ? (
                 <div className="text-center py-4">Carregando alunos...</div>
               ) : students.length === 0 ? (
                 <div className="text-center py-4 text-gray-500">Nenhum aluno encontrado</div>
@@ -232,10 +326,80 @@ const TrainerDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button variant="outline" className="h-20 flex flex-col">
-                <Calendar className="h-6 w-6 mb-2" />
-                Criar Treino
-              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="h-20 flex flex-col">
+                    <Calendar className="h-6 w-6 mb-2" />
+                    Criar Treino
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>Criar Novo Treino</DialogTitle>
+                    <DialogDescription>
+                      Preencha os detalhes do treino para seu aluno.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="student">Aluno</Label>
+                      <Select
+                        value={selectedStudent}
+                        onValueChange={setSelectedStudent}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um aluno" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {students.map((student) => (
+                            <SelectItem key={student.id} value={student.id}>
+                              {student.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="title">Título do Treino</Label>
+                      <Textarea
+                        id="title"
+                        value={workoutTitle}
+                        onChange={(e) => setWorkoutTitle(e.target.value)}
+                        placeholder="Ex: Treino A - Peito e Tríceps"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="description">Descrição (opcional)</Label>
+                      <Textarea
+                        id="description"
+                        value={workoutDescription}
+                        onChange={(e) => setWorkoutDescription(e.target.value)}
+                        placeholder="Ex: Foco em hipertrofia com exercícios compostos"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="exercises">Exercícios</Label>
+                      <Textarea
+                        id="exercises"
+                        value={workoutExercises}
+                        onChange={(e) => setWorkoutExercises(e.target.value)}
+                        placeholder="Ex: Supino Reto - 4x12
+Leg Press - 4x15
+Extensão de Pernas - 3x20"
+                        className="h-[200px]"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={handleCreateWorkout}
+                      disabled={isCreatingWorkout}
+                    >
+                      {isCreatingWorkout ? 'Criando...' : 'Criar e Enviar Treino'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
               <Button variant="outline" className="h-20 flex flex-col">
                 <FileText className="h-6 w-6 mb-2" />
                 Criar Dieta

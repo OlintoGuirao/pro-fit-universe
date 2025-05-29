@@ -31,38 +31,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('Iniciando monitoramento de autenticação...');
+    
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('Estado de autenticação alterado:', { firebaseUser });
+      
       if (firebaseUser) {
         try {
+          console.log('Buscando dados do usuário:', firebaseUser.uid);
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          
           if (userDoc.exists()) {
-            setUser({
+            const userData = userDoc.data();
+            console.log('Dados do usuário encontrados:', userData);
+            
+            const userWithId = {
               id: firebaseUser.uid,
-              ...userDoc.data()
-            } as User);
+              ...userData
+            } as User;
+            
+            console.log('Definindo usuário:', userWithId);
+            setUser(userWithId);
+          } else {
+            console.error('Documento do usuário não encontrado');
+            setUser(null);
           }
         } catch (error) {
           console.error('Erro ao carregar dados do usuário:', error);
+          setUser(null);
         }
       } else {
+        console.log('Usuário não autenticado');
         setUser(null);
       }
+      
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      console.log('Desinscrevendo do monitoramento de autenticação');
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('Iniciando login...');
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log('Login bem-sucedido:', userCredential.user.uid);
+      
       const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       
       if (userDoc.exists()) {
-        setUser({
+        const userData = userDoc.data();
+        console.log('Dados do usuário carregados:', userData);
+        
+        const userWithId = {
           id: userCredential.user.uid,
-          ...userDoc.data()
-        } as User);
+          ...userData
+        } as User;
+        
+        console.log('Definindo usuário após login:', userWithId);
+        setUser(userWithId);
+      } else {
+        console.error('Documento do usuário não encontrado após login');
+        throw new Error('Dados do usuário não encontrados');
       }
     } catch (error) {
       console.error('Erro ao fazer login:', error);
@@ -72,7 +105,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
+      console.log('Iniciando logout...');
       await signOut(auth);
+      console.log('Logout bem-sucedido');
       setUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
@@ -82,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

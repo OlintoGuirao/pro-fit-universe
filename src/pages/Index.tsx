@@ -12,6 +12,7 @@ import Workout from './Workout';
 import Messages from './Messages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Users from './Users';
+import Diet from './Diet';
 
 const Index = () => {
   const { user, isLoading } = useAuth();
@@ -68,6 +69,7 @@ const Index = () => {
       case 1: // Aluno
         switch (activeTab) {
           case 'workout': return <Workout />;
+          case 'diet': return <Diet />;
           case 'progress': return <ProgressPage />;
           case 'messages': return <Messages />;
           default: return <StudentDashboard />;

@@ -98,14 +98,7 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
 
   const renderTrainerButtons = () => (
     <>
-      <Button
-        variant={activeTab === 'dashboard' ? 'default' : 'ghost'}
-        onClick={() => handleTabClick('dashboard')}
-        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
-      >
-        <Home className="mr-2 h-4 w-4" />
-        Dashboard
-      </Button>
+
       <Button
         variant={activeTab === 'social' ? 'default' : 'ghost'}
         onClick={() => handleTabClick('social')}
@@ -120,7 +113,7 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
         className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
       >
         <Users className="mr-2 h-4 w-4" />
-        Meus Alunos
+        Dashboard
       </Button>
       <Button
         variant={activeTab === 'templates' ? 'default' : 'ghost'}

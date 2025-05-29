@@ -2,43 +2,59 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Função auxiliar para verificar se o usuário está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Função auxiliar para verificar se o usuário é o dono do documento
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Função auxiliar para verificar se o usuário é um professor
+    function isTrainer() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 2;
+    }
+
+    // Função auxiliar para verificar se o usuário é um aluno
+    function isStudent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 1;
+    }
+
     // Regras para a coleção users
     match /users/{userId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
 
-    // Regras para a coleção auth
-    match /auth/{userId} {
-      allow read, write: if true;
+    // Regras para a coleção suggestions
+    match /suggestions/{suggestionId} {
+      allow read, write: if isAuthenticated();
     }
 
-    // Regras para a coleção messages
-    match /messages/{messageId} {
-      allow read, write: if request.auth != null;
-    }
-
-    // Regras para a coleção posts
-    match /posts/{postId} {
-      allow read, write: if request.auth != null;
+    // Regras para a coleção dietPlans
+    match /dietPlans/{dietPlanId} {
+      allow read, write: if isAuthenticated();
     }
 
     // Regras para a coleção workouts
     match /workouts/{workoutId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isAuthenticated();
     }
 
-    // Regras para a coleção progress
-    match /progress/{progressId} {
-      allow read, write: if request.auth != null;
+    // Regras para a coleção feed
+    match /feed/{postId} {
+      allow read, write: if isAuthenticated();
     }
   }
 }
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /posts/{userId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+    match /{allPaths=**} {
+      allow read, write: if isAuthenticated();
     }
   }
 } 
