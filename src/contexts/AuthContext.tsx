@@ -1,21 +1,28 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '@/lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { User } from '@/types/user';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  register: (email: string, password: string, name: string, role: string) => Promise<void>;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isLoading: true,
   login: async () => {},
-  logout: async () => {}
+  logout: async () => {},
+  register: async () => {},
+  setUser: () => {}
 });
 
 export const useAuth = () => {
@@ -80,7 +87,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log('Login bem-sucedido:', userCredential.user.uid);
       
-      const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      let userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      
+      if (!userDoc.exists()) {
+        // Criar dados do usuário se não existir
+        const defaultUserData = {
+          name: email.split('@')[0],
+          email: email,
+          level: 1, // Aluno por padrão
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        await setDoc(doc(db, 'users', userCredential.user.uid), defaultUserData);
+        userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+      }
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
@@ -103,6 +125,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (email: string, password: string, name: string, role: string) => {
+    try {
+      console.log('Iniciando registro...');
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('Registro bem-sucedido:', userCredential.user.uid);
+      
+      const userData = {
+        name,
+        email,
+        level: role === 'trainer' ? 2 : 1,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+      
+      const userWithId = {
+        id: userCredential.user.uid,
+        ...userData
+      } as User;
+      
+      setUser(userWithId);
+    } catch (error) {
+      console.error('Erro ao fazer registro:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     try {
       console.log('Iniciando logout...');
@@ -116,7 +167,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      isLoading: loading, 
+      login, 
+      logout, 
+      register,
+      setUser 
+    }}>
       {children}
     </AuthContext.Provider>
   );

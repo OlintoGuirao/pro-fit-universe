@@ -1,3 +1,4 @@
+
 import { CohereClient } from 'cohere-ai';
 
 const COHERE_API_KEY = import.meta.env.VITE_COHERE_API_KEY;
@@ -14,11 +15,11 @@ export const generateAIResponse = async (message: string): Promise<string> => {
     const response = await cohere.generate({
       model: 'command',
       prompt: `Você é um assistente especializado em personal training. Responda à seguinte pergunta de forma profissional e detalhada em português: ${message}`,
-      max_tokens: 300,
+      maxTokens: 300,
       temperature: 0.7,
       k: 0,
-      stop_sequences: [],
-      return_likelihoods: 'NONE'
+      stopSequences: [],
+      returnLikelihoods: 'NONE'
     });
 
     console.log('Resposta recebida:', response);
@@ -32,4 +33,4 @@ export const generateAIResponse = async (message: string): Promise<string> => {
     console.error('Erro detalhado:', error);
     return 'Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.';
   }
-}; 
+};

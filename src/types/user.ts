@@ -1,38 +1,27 @@
+
 export interface User {
   id: string;
-  email: string;
   name: string;
-  avatar?: string;
-  phone?: string;
-  bio?: string;
-  level: 1 | 2 | 3; // 1: Aluno, 2: Professor, 3: Admin
-  createdAt: string;
-  updatedAt: string;
+  email: string;
+  level: number;
   isActive: boolean;
-}
-
-export interface Student extends User {
-  level: 1;
-  trainerId?: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  avatar?: string;
+  displayName?: string;
+  role?: string;
+  uid?: string;
+  weight?: number;
+  height?: number;
   goals?: string[];
-  measurements?: {
-    weight?: number;
-    height?: number;
-    bodyFat?: number;
-  };
+  students?: any[];
+  maxStudents?: number;
 }
 
-export interface Trainer extends User {
-  level: 2;
-  specialties?: string[];
-  certifications?: string[];
-  students?: string[];
-  maxStudents: number;
-  isVerified: boolean;
-}
+export type UserType = User;
 
-export interface Admin extends User {
-  level: 3;
+export interface UpdateProfileData {
+  name?: string;
+  email?: string;
+  avatar?: string;
 }
-
-export type UserType = Student | Trainer | Admin;

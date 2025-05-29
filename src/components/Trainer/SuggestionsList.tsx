@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useSuggestion } from '@/contexts/SuggestionContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,9 +11,9 @@ interface SuggestionsListProps {
 }
 
 const SuggestionsList: React.FC<SuggestionsListProps> = ({ type }) => {
-  const { sentSuggestions, updateSuggestionStatus } = useSuggestion();
+  const { suggestions, updateSuggestionStatus } = useSuggestion();
 
-  const filteredSuggestions = sentSuggestions.filter(s => s.type === type);
+  const filteredSuggestions = suggestions.filter(s => s.type === type);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -71,7 +72,7 @@ const SuggestionsList: React.FC<SuggestionsListProps> = ({ type }) => {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="font-medium text-sm">{suggestion.studentName}</p>
+                    <p className="font-medium text-sm">{suggestion.studentId}</p>
                     <p className="text-xs text-gray-500">
                       {new Date(suggestion.createdAt).toLocaleDateString('pt-BR')}
                     </p>
@@ -109,4 +110,4 @@ const SuggestionsList: React.FC<SuggestionsListProps> = ({ type }) => {
   );
 };
 
-export default SuggestionsList; 
+export default SuggestionsList;
