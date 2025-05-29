@@ -1,4 +1,4 @@
-import { db } from './firebase';
+import { db } from '../firebase';
 import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc } from 'firebase/firestore';
 
 // Função para criar um novo usuário
