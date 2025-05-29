@@ -173,8 +173,6 @@ export const associateStudentWithTrainer = async (studentId: string, trainerId: 
   }
 };
 
-import { arrayUnion } from "firebase/firestore";
-
 // Função para buscar professor de um aluno
 export const getTrainerByStudent = async (studentId: string) => {
   try {
