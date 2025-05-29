@@ -6,6 +6,8 @@ import Sidebar from '@/components/Layout/Sidebar';
 import StudentDashboard from '@/components/Student/StudentDashboard';
 import TrainerDashboard from '@/components/Trainer/TrainerDashboard';
 import AdminDashboard from '@/components/Admin/AdminDashboard';
+import TrainersManagement from '@/components/Admin/TrainersManagement';
+import PlansManagement from '@/components/Admin/PlansManagement';
 import SocialFeed from '@/components/Social/SocialFeed';
 import ProgressPage from './Progress';
 import Workout from './Workout';
@@ -13,13 +15,28 @@ import Messages from './Messages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Users from './Users';
 import Diet from './Diet';
+import { useLocation } from 'react-router-dom';
 
 const Index = () => {
   const { user, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   const getDefaultTab = () => {
+    const path = location.pathname;
+    if (path.includes('/student/dashboard')) return 'dashboard';
+    if (path.includes('/trainer/dashboard')) return 'students';
+    if (path.includes('/admin/dashboard')) return 'dashboard';
+    if (path.includes('/social')) return 'social';
+    if (path.includes('/workout')) return 'workout';
+    if (path.includes('/diet')) return 'diet';
+    if (path.includes('/progress')) return 'progress';
+    if (path.includes('/messages')) return 'messages';
+    if (path.includes('/users')) return 'users';
+    if (path.includes('/trainers')) return 'trainers';
+    if (path.includes('/plans')) return 'plans';
+
     switch (user?.level) {
       case 1: return 'social';
       case 2: return 'students';
@@ -32,7 +49,7 @@ const Index = () => {
     if (user) {
       setActiveTab(getDefaultTab());
     }
-  }, [user?.level]);
+  }, [user?.level, location.pathname]);
 
   if (isLoading) {
     return (
@@ -63,6 +80,15 @@ const Index = () => {
   }
 
   const renderContent = () => {
+    const path = location.pathname;
+    
+    // Rotas específicas
+    if (path.includes('/student/dashboard')) return <StudentDashboard />;
+    if (path.includes('/trainer/dashboard')) return <TrainerDashboard />;
+    if (path.includes('/admin/dashboard')) return <AdminDashboard />;
+    if (path.includes('/users')) return <Users />;
+    
+    // Rotas baseadas na aba ativa
     if (activeTab === 'social') return <SocialFeed />;
     
     switch (user.level) {
@@ -85,10 +111,9 @@ const Index = () => {
       case 3: // Admin
         switch (activeTab) {
           case 'dashboard': return <AdminDashboard />;
-          case 'trainers': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Gerenciar Professores</h2></div>;
+          case 'trainers': return <TrainersManagement />;
           case 'users': return <Users />;
-          case 'plans': return <div className="p-4 sm:p-6"><h2 className="text-xl sm:text-2xl">Planos e Pagamentos</h2></div>;
-          case 'messages': return <Messages />;
+          case 'plans': return <PlansManagement />;
           default: return <AdminDashboard />;
         }
       default:
@@ -99,17 +124,10 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-      <div className="flex">
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-        />
-        <main className="flex-1 min-h-screen overflow-auto lg:ml-0">
-          {renderContent()}
-        </main>
-      </div>
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+      <main className={`pt-14 transition-all duration-200 ${sidebarOpen ? 'lg:pl-64' : ''}`}>
+        {renderContent()}
+      </main>
     </div>
   );
 };

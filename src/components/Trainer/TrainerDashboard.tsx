@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useSuggestion } from '@/contexts/SuggestionContext';
+import StudentLimitAlert from './StudentLimitAlert';
 
 interface Student {
   id: string;
@@ -289,6 +290,7 @@ const TrainerDashboard = () => {
 
   return (
     <div className="space-y-6 p-6">
+      <StudentLimitAlert />
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard do Personal</h1>
         <p className="text-gray-600 mt-2">Gerencie seus alunos e acompanhe o progresso de cada um</p>

@@ -45,7 +45,19 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
     
     // Redireciona para a página correta
     if (tab === 'dashboard') {
-      navigate('/trainer/dashboard');
+      switch (user.level) {
+        case 1:
+          navigate('/student/dashboard');
+          break;
+        case 2:
+          navigate('/trainer/dashboard');
+          break;
+        case 3:
+          navigate('/');
+          break;
+        default:
+          navigate('/');
+      }
     }
   };
 
@@ -175,14 +187,6 @@ const Sidebar = ({ activeTab, setActiveTab, sidebarOpen, setSidebarOpen }: Sideb
       >
         <CreditCard className="mr-2 h-4 w-4" />
         Planos e Pagamentos
-      </Button>
-      <Button
-        variant={activeTab === 'messages' ? 'default' : 'ghost'}
-        onClick={() => handleTabClick('messages')}
-        className="w-full justify-start text-sm sm:text-base py-2 sm:py-3"
-      >
-        <MessageSquare className="mr-2 h-4 w-4" />
-        Mensagens
       </Button>
     </>
   );

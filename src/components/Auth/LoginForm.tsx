@@ -5,8 +5,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RegisterForm } from './RegisterForm';
+import { Loader2, Mail, Lock, User } from 'lucide-react';
 
 export function LoginForm() {
   const navigate = useNavigate();
@@ -88,94 +88,96 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm sm:max-w-md space-y-4 sm:space-y-6">
-        <div className="text-center">
-          <div className="mx-auto w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mb-4">
-            <span className="text-white text-lg sm:text-2xl">💪</span>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-sm font-medium">Email</Label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="seu@email.com"
+              value={formData.email}
+              onChange={handleInputChange}
+              required
+              disabled={isLoading}
+              className="h-11 pl-10"
+            />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            FitLife
-          </h1>
-          <p className="text-gray-600 mt-2 text-sm sm:text-base">Entre na sua conta para continuar</p>
         </div>
-
-        <Card className="shadow-lg">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg sm:text-xl">Login</CardTitle>
-            <CardDescription className="text-sm">
-              Acesse sua conta com email e senha
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Entrando...' : 'Entrar'}
-              </Button>
-            </form>
-
-            <div className="mt-4 text-center">
-              <p className="text-sm text-gray-600">
-                Não tem uma conta?{' '}
-                <Button 
-                  variant="link" 
-                  className="p-0 h-auto text-purple-600 hover:text-purple-700 text-sm"
-                  onClick={() => setShowRegister(true)}
-                >
-                  Cadastre-se aqui
-                </Button>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Contas de Demo</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {demoAccounts.map((account, index) => (
-              <Button
-                key={index}
-                variant="outline"
-                size="sm"
-                className="w-full text-left justify-start h-auto py-2 px-3"
-                onClick={() => handleDemoLogin(account.email, account.password)}
-                disabled={isLoading}
-              >
-                <div className="text-left">
-                  <div className="font-medium text-sm">{account.role}</div>
-                  <div className="text-xs text-gray-500">{account.email}</div>
-                </div>
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
+        
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="password" className="text-sm font-medium">Senha</Label>
+            <Button
+              variant="link"
+              className="text-xs text-blue-600 hover:text-blue-800 p-0 h-auto"
+              onClick={() => {/* TODO: Implementar recuperação de senha */}}
+            >
+              Esqueceu a senha?
+            </Button>
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={handleInputChange}
+              required
+              disabled={isLoading}
+              className="h-11 pl-10"
+            />
+          </div>
+        </div>
       </div>
-    </div>
+
+      <Button 
+        type="submit" 
+        className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium"
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Entrando...
+          </>
+        ) : (
+          'Entrar'
+        )}
+      </Button>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">Ou entre com uma conta demo</span>
+        </div>
+      </div>
+
+      <div className="grid gap-3">
+        {demoAccounts.map((account, index) => (
+          <Button
+            key={index}
+            variant="outline"
+            type="button"
+            className="w-full h-11 justify-start text-left hover:bg-gray-50"
+            onClick={() => handleDemoLogin(account.email, account.password)}
+            disabled={isLoading}
+          >
+            <User className="mr-2 h-4 w-4 text-gray-400" />
+            <div>
+              <div className="font-medium text-sm">{account.role}</div>
+              <div className="text-xs text-gray-500">{account.email}</div>
+            </div>
+          </Button>
+        ))}
+      </div>
+    </form>
   );
 }

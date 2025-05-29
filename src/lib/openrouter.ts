@@ -69,8 +69,8 @@ export const generateAIResponse = async (message: string, messageHistory: {role:
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
-            'HTTP-Referer': 'https://pro-fit-universe.vercel.app',
-            'X-Title': 'Pro Fit Universe'
+            'HTTP-Referer': 'https://wordfit.vercel.app',
+            'X-Title': 'WordFit'
           },
           body: JSON.stringify({
             model,
