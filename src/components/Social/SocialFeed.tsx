@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ const SocialFeed = () => {
     if (!user) return;
 
     const unsubscribe = subscribeToPosts((updatedPosts) => {
+      console.log('Posts recebidos:', updatedPosts);
       setPosts(updatedPosts);
       setLoading(false);
     });
@@ -68,42 +70,31 @@ const SocialFeed = () => {
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const uploadFiles = async (files: File[]): Promise<string[]> => {
+  const uploadFiles = async (files: File[]): Promise<{ images: string[], videos: string[] }> => {
     if (!user?.id) {
       throw new Error('Usuário não autenticado');
     }
 
-    const uploadPromises = files.map(async (file) => {
-      try {
-        console.log('Iniciando upload do arquivo:', {
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        });
+    const result = { images: [] as string[], videos: [] as string[] };
 
+    for (const file of files) {
+      try {
+        console.log('Fazendo upload do arquivo:', file.name, file.type);
         const url = await uploadToCloudinary(file);
         console.log('Upload concluído:', url);
         
-        return url;
+        if (file.type.startsWith('image/')) {
+          result.images.push(url);
+        } else if (file.type.startsWith('video/')) {
+          result.videos.push(url);
+        }
       } catch (error) {
-        console.error('Erro detalhado no upload:', {
-          error,
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        });
-        throw new Error(`Falha no upload do arquivo ${file.name}: ${error.message}`);
+        console.error('Erro no upload do arquivo:', file.name, error);
+        throw new Error(`Falha no upload do arquivo ${file.name}`);
       }
-    });
-
-    try {
-      const urls = await Promise.all(uploadPromises);
-      console.log('Todos os uploads concluídos com sucesso:', urls);
-      return urls;
-    } catch (error) {
-      console.error('Erro no upload de arquivos:', error);
-      throw error;
     }
+
+    return result;
   };
 
   const handleCreatePost = async () => {
@@ -111,17 +102,15 @@ const SocialFeed = () => {
 
     try {
       setUploading(true);
-      let mediaUrls: string[] = [];
+      let images: string[] = [];
+      let videos: string[] = [];
       
       if (selectedFiles.length > 0) {
         try {
-          console.log('Iniciando upload de arquivos...', {
-            fileCount: selectedFiles.length,
-            fileTypes: selectedFiles.map(f => f.type),
-            fileSizes: selectedFiles.map(f => f.size)
-          });
-          mediaUrls = await uploadFiles(selectedFiles);
-          console.log('Uploads concluídos:', mediaUrls);
+          const uploadResult = await uploadFiles(selectedFiles);
+          images = uploadResult.images;
+          videos = uploadResult.videos;
+          console.log('Upload concluído - Imagens:', images, 'Vídeos:', videos);
         } catch (error) {
           console.error('Erro no upload:', error);
           alert(`Erro ao fazer upload dos arquivos: ${error.message}`);
@@ -129,14 +118,9 @@ const SocialFeed = () => {
         }
       }
 
-      console.log('Criando post com mídias:', mediaUrls);
-      await createPost(
-        user.id,
-        newPost,
-        selectedType,
-        mediaUrls.filter(url => url.includes('image')),
-        mediaUrls.filter(url => url.includes('video'))
-      );
+      console.log('Criando post...');
+      await createPost(user.id, newPost, selectedType, images, videos);
+      console.log('Post criado com sucesso');
 
       setNewPost('');
       setSelectedFiles([]);
@@ -189,30 +173,41 @@ const SocialFeed = () => {
   };
 
   const PostContent = ({ post }: { post: any }) => {
-    if (post.images && post.images.length > 0) {
+    const hasImages = post.images && Array.isArray(post.images) && post.images.length > 0;
+    const hasVideos = post.videos && Array.isArray(post.videos) && post.videos.length > 0;
+
+    if (hasImages) {
       return (
         <div className="grid grid-cols-2 gap-2 mt-2">
-          {post.images.map((image, index) => (
+          {post.images.map((image: string, index: number) => (
             <img
               key={index}
               src={image}
               alt={`Imagem ${index + 1}`}
               className="w-full h-48 object-cover rounded-lg"
+              onError={(e) => {
+                console.error('Erro ao carregar imagem:', image);
+                e.currentTarget.style.display = 'none';
+              }}
             />
           ))}
         </div>
       );
     }
 
-    if (post.videos && post.videos.length > 0) {
+    if (hasVideos) {
       return (
         <div className="grid grid-cols-1 gap-2 mt-2">
-          {post.videos.map((video, index) => (
+          {post.videos.map((video: string, index: number) => (
             <video
               key={index}
               src={video}
               controls
               className="w-full rounded-lg"
+              onError={(e) => {
+                console.error('Erro ao carregar vídeo:', video);
+                e.currentTarget.style.display = 'none';
+              }}
             />
           ))}
         </div>
@@ -226,7 +221,6 @@ const SocialFeed = () => {
     if (!date) return '';
     
     try {
-      // Se for um Timestamp do Firestore
       if (date instanceof Timestamp) {
         return formatDistanceToNow(date.toDate(), {
           addSuffix: true,
@@ -234,7 +228,6 @@ const SocialFeed = () => {
         });
       }
       
-      // Se for uma data normal
       if (date instanceof Date) {
         return formatDistanceToNow(date, {
           addSuffix: true,
@@ -242,7 +235,6 @@ const SocialFeed = () => {
         });
       }
       
-      // Se for um número (timestamp)
       if (typeof date === 'number') {
         return formatDistanceToNow(new Date(date), {
           addSuffix: true,
@@ -414,59 +406,71 @@ const SocialFeed = () => {
 
       {/* Feed de Posts */}
       <div className="space-y-4 sm:space-y-6">
-        {posts.map((post) => (
-          <Card key={post.id} className="bg-white rounded-lg shadow p-4 sm:p-6">
-            <CardHeader className="p-0">
-              <div className="flex items-start space-x-3 sm:space-x-4">
-                <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
-                  <AvatarImage src={post.author?.avatar} />
-                  <AvatarFallback>{post.author?.name?.charAt(0) || '?'}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                      <h3 className="font-semibold text-sm sm:text-base truncate">{post.author?.name}</h3>
-                      <p className="text-xs sm:text-sm text-gray-500">
-                        {formatPostDate(post.createdAt)}
-                      </p>
+        {posts.length === 0 ? (
+          <Card className="p-8 text-center">
+            <p className="text-gray-500">Nenhum post encontrado. Seja o primeiro a compartilhar!</p>
+          </Card>
+        ) : (
+          posts.map((post) => (
+            <Card key={post.id} className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <CardHeader className="p-0">
+                <div className="flex items-start space-x-3 sm:space-x-4">
+                  <Avatar className="w-10 h-10 sm:w-12 sm:h-12">
+                    <AvatarImage src={post.author?.avatar} />
+                    <AvatarFallback>{post.author?.name?.charAt(0) || '?'}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h3 className="font-semibold text-sm sm:text-base truncate">
+                          {post.author?.name || 'Usuário'}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-gray-500">
+                          {formatPostDate(post.createdAt)}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="capitalize text-xs sm:text-sm">
+                        {getPostTypeLabel(post.type)}
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className="capitalize text-xs sm:text-sm">
-                      {post.type}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 text-sm sm:text-base whitespace-pre-wrap break-words">{post.content}</p>
-                  <PostContent post={post} />
-                  <div className="flex items-center space-x-4 mt-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleLike(post.id)}
-                      className="flex items-center space-x-1 text-xs sm:text-sm"
-                    >
-                      <Heart
-                        className={`w-4 h-4 ${
-                          post.likes.includes(user?.id) ? 'fill-red-500 text-red-500' : ''
-                        }`}
-                      />
-                      <span>{post.likes.length}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex items-center space-x-1 text-xs sm:text-sm"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      <span>{post.comments.length}</span>
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-xs sm:text-sm">
-                      <Share2 className="w-4 h-4" />
-                    </Button>
+                    {post.content && (
+                      <p className="mt-2 text-sm sm:text-base whitespace-pre-wrap break-words">
+                        {post.content}
+                      </p>
+                    )}
+                    <PostContent post={post} />
+                    <div className="flex items-center space-x-4 mt-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleLike(post.id)}
+                        className="flex items-center space-x-1 text-xs sm:text-sm"
+                      >
+                        <Heart
+                          className={`w-4 h-4 ${
+                            post.likes && post.likes.includes(user?.id) ? 'fill-red-500 text-red-500' : ''
+                          }`}
+                        />
+                        <span>{post.likes ? post.likes.length : 0}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex items-center space-x-1 text-xs sm:text-sm"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>{post.comments ? post.comments.length : 0}</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-xs sm:text-sm">
+                        <Share2 className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </CardHeader>
-          </Card>
-        ))}
+              </CardHeader>
+            </Card>
+          ))
+        )}
       </div>
     </div>
   );
