@@ -52,16 +52,26 @@ const Messages = () => {
         // Aluno: carregar professor
         const trainer = await getTrainerByStudent(user.id);
         if (trainer.length > 0) {
-          setSelectedUser(trainer[0]);
-          const messages = await getMessagesBetweenUsers(user.id, trainer[0].id);
+          const trainerData = trainer[0];
+          setSelectedUser({
+            id: trainerData.id,
+            name: trainerData.name || 'Professor',
+            avatar: trainerData.avatar || null
+          });
+          const messages = await getMessagesBetweenUsers(user.id, trainerData.id);
           setMessages(messages);
-          const unreadCount = await getUnreadMessagesCountForStudent(user.id, trainer[0].id);
-          setUnreadCounts({ [trainer[0].id]: unreadCount });
+          const unreadCount = await getUnreadMessagesCountForStudent(user.id, trainerData.id);
+          setUnreadCounts({ [trainerData.id]: unreadCount });
         }
       } else if (user.level === 2) {
         // Professor: carregar alunos
         const students = await getStudentsByTrainer(user.id);
-        setUsers(students);
+        const formattedStudents = students.map(student => ({
+          id: student.id,
+          name: student.name || 'Aluno',
+          avatar: student.avatar || null
+        }));
+        setUsers(formattedStudents);
         const unreadCounts = await getUnreadMessagesCount(user.id);
         setUnreadCounts(unreadCounts);
       }
@@ -371,4 +381,4 @@ const Messages = () => {
   );
 };
 
-export default Messages; 
+export default Messages;

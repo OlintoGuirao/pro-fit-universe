@@ -389,8 +389,14 @@ export const subscribeToPosts = (callback: (posts: Post[]) => void) => {
 
         return {
           id: docSnapshot.id,
-          ...postData,
-          createdAt: postData.createdAt,
+          authorId: postData.authorId,
+          content: postData.content,
+          type: postData.type,
+          images: postData.images || [],
+          videos: postData.videos || [],
+          likes: postData.likes || [],
+          comments: postData.comments || [],
+          createdAt: postData.createdAt?.toDate() || new Date(),
           author: {
             id: postData.authorId,
             name: authorData?.name || 'Usuário',
