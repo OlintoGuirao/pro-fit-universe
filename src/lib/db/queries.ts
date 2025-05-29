@@ -1,5 +1,6 @@
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, doc, Timestamp, arrayUnion, getDoc, setDoc, writeBatch, onSnapshot } from 'firebase/firestore';
+import { Post } from '@/types/post';
 
 // Buscar mensagens entre dois usuários
 export async function getMessagesBetweenUsers(userId1: string, userId2: string) {
@@ -11,11 +12,17 @@ export async function getMessagesBetweenUsers(userId1: string, userId2: string) 
   );
 
   const snapshot = await getDocs(q);
-  const messages = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-    createdAt: doc.data().createdAt?.toDate()
-  }));
+  const messages = snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      senderId: data.senderId,
+      receiverId: data.receiverId,
+      content: data.content,
+      isRead: data.isRead,
+      createdAt: data.createdAt?.toDate()
+    };
+  });
 
   // Filtrar mensagens localmente
   return messages.filter(msg => 
@@ -286,11 +293,17 @@ export function subscribeToMessages(userId1: string, userId2: string, callback: 
   );
 
   return onSnapshot(q, (snapshot) => {
-    const messages = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      createdAt: doc.data().createdAt?.toDate()
-    }));
+    const messages = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        senderId: data.senderId,
+        receiverId: data.receiverId,
+        content: data.content,
+        isRead: data.isRead,
+        createdAt: data.createdAt?.toDate()
+      };
+    });
 
     // Filtrar mensagens localmente
     const filteredMessages = messages.filter(msg => 
@@ -450,4 +463,4 @@ export async function addComment(postId: string, authorId: string, content: stri
     console.error('Erro ao adicionar comentário:', error);
     throw error;
   }
-} 
+}
