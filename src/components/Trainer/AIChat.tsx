@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { MessageCircle, Send, User, Bot } from 'lucide-react';
-import { generateAIResponse } from '@/lib/cohere';
+import { generateAIResponse } from '@/lib/openrouter';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSuggestion } from '@/contexts/SuggestionContext';
 import { Student } from '@/types/student';
