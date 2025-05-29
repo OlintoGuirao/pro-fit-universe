@@ -12,7 +12,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   register: (email: string, password: string, name: string, role: string) => Promise<void>;
-  setUser: (user: User | null) => void;
+  setUser: (user: User | null | ((prev: User | null) => User | null)) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
