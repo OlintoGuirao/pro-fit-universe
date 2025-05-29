@@ -55,8 +55,8 @@ const Messages = () => {
           const trainerData = trainer[0];
           setSelectedUser({
             id: trainerData.id,
-            name: trainerData.name || 'Professor',
-            avatar: trainerData.avatar || null
+            name: trainerData.name,
+            avatar: trainerData.avatar
           });
           const messages = await getMessagesBetweenUsers(user.id, trainerData.id);
           setMessages(messages);
@@ -68,8 +68,8 @@ const Messages = () => {
         const students = await getStudentsByTrainer(user.id);
         const formattedStudents = students.map(student => ({
           id: student.id,
-          name: student.name || 'Aluno',
-          avatar: student.avatar || null
+          name: student.name,
+          avatar: student.avatar
         }));
         setUsers(formattedStudents);
         const unreadCounts = await getUnreadMessagesCount(user.id);
