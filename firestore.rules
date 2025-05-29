@@ -1,3 +1,4 @@
+
 rules_version = '2';
 
 service cloud.firestore {
@@ -15,46 +16,66 @@ service cloud.firestore {
     // Função auxiliar para verificar se o usuário é um professor
     function isTrainer() {
       return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 2;
     }
 
     // Função auxiliar para verificar se o usuário é um aluno
     function isStudent() {
       return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 1;
     }
 
     // Regras para a coleção users
     match /users/{userId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (isOwner(userId) || request.auth.uid == userId);
+      allow create: if isAuthenticated();
     }
 
     // Regras para a coleção suggestions
     match /suggestions/{suggestionId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
     }
 
     // Regras para a coleção dietPlans
     match /dietPlans/{dietPlanId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
     }
 
     // Regras para a coleção workouts
     match /workouts/{workoutId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
     }
 
-    // Regras para a coleção feed
-    match /feed/{postId} {
-      allow read, write: if isAuthenticated();
+    // Regras para a coleção posts (feed social)
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated() && isOwner(resource.data.authorId);
+    }
+
+    // Regras para a coleção messages
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
+    }
+
+    // Regras para a coleção tasks
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow create: if isAuthenticated();
     }
   }
 }
-
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if isAuthenticated();
-    }
-  }
-} 

@@ -16,6 +16,9 @@ export interface User {
   goals?: string[];
   students?: any[];
   maxStudents?: number;
+  phone?: string;
+  bio?: string;
+  trainerId?: string;
 }
 
 export type UserType = User;
@@ -24,4 +27,7 @@ export interface UpdateProfileData {
   name?: string;
   email?: string;
   avatar?: string;
+  displayName?: string;
+  phone?: string;
+  bio?: string;
 }
