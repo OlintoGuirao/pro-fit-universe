@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc, arrayUnion } from 'firebase/firestore';
 
 // Função para criar um novo usuário
 export const createUser = async (userId: string, userData: any) => {
@@ -235,8 +235,18 @@ export const subscribeToMessages = (userId1: string, userId2: string, callback: 
 };
 
 // Add missing social functions for SocialFeed
-export const createPost = async (postData: any) => {
+export const createPost = async (authorId: string, content: string, type: string, images: string[], videos: string[]) => {
   try {
+    const postData = {
+      authorId,
+      content,
+      type,
+      images: images || [],
+      videos: videos || [],
+      likes: [],
+      comments: [],
+      createdAt: new Date(),
+    };
     await addDoc(collection(db, 'posts'), postData);
   } catch (error) {
     console.error("Erro ao criar post:", error);
@@ -298,8 +308,16 @@ export const likePost = async (postId: string, userId: string) => {
   }
 };
 
-export const addComment = async (postId: string, commentData: any) => {
+export const addComment = async (postId: string, userId: string, content: string) => {
   try {
+    const commentData = {
+      id: Date.now().toString(),
+      authorId: userId,
+      authorName: 'Usuário', // This will be updated with actual user data
+      content,
+      createdAt: new Date()
+    };
+    
     const postRef = doc(db, 'posts', postId);
     await updateDoc(postRef, {
       comments: arrayUnion(commentData)
