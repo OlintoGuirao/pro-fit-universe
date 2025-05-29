@@ -1,5 +1,5 @@
-import { db } from './firebase';
-import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc } from 'firebase/firestore';
 
 // Função para criar um novo usuário
 export const createUser = async (userId: string, userData: any) => {
@@ -64,7 +64,10 @@ export const getMessagesBetweenUsers = async (userId1: string, userId2: string, 
     const querySnapshot = await getDocs(q);
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data(),
+      senderId: doc.data().senderId,
+      receiverId: doc.data().receiverId,
+      content: doc.data().content,
+      isRead: doc.data().isRead,
       createdAt: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
     }));
   } catch (error) {
@@ -219,11 +222,89 @@ export const subscribeToMessages = (userId1: string, userId2: string, callback: 
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
     const messages = querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data(),
+      senderId: doc.data().senderId,
+      receiverId: doc.data().receiverId,
+      content: doc.data().content,
+      isRead: doc.data().isRead,
       createdAt: doc.data().createdAt ? doc.data().createdAt.toDate() : null,
     }));
     callback(messages);
   });
 
   return unsubscribe;
+};
+
+// Add missing social functions for SocialFeed
+export const createPost = async (postData: any) => {
+  try {
+    await addDoc(collection(db, 'posts'), postData);
+  } catch (error) {
+    console.error("Erro ao criar post:", error);
+  }
+};
+
+export const subscribeToPosts = (callback: (posts: any[]) => void) => {
+  const postsCollection = collection(db, 'posts');
+  const q = query(postsCollection, orderBy('createdAt', 'desc'));
+
+  const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+    const posts = await Promise.all(
+      querySnapshot.docs.map(async (docSnapshot) => {
+        const postData = docSnapshot.data();
+        
+        // Get author data
+        let authorData = null;
+        if (postData.authorId) {
+          const authorDoc = await getDoc(doc(db, 'users', postData.authorId));
+          if (authorDoc.exists()) {
+            authorData = authorDoc.data();
+          }
+        }
+
+        return {
+          id: docSnapshot.id,
+          authorId: postData.authorId,
+          content: postData.content,
+          type: postData.type,
+          images: postData.images || [],
+          videos: postData.videos || [],
+          likes: postData.likes || [],
+          comments: postData.comments || [],
+          createdAt: postData.createdAt?.toDate() || new Date(),
+          author: {
+            id: postData.authorId,
+            name: authorData?.name || 'Usuário',
+            avatar: authorData?.avatar || null,
+            role: authorData?.level === 2 ? 'trainer' : 'student'
+          }
+        };
+      })
+    );
+    
+    callback(posts);
+  });
+
+  return unsubscribe;
+};
+
+export const likePost = async (postId: string, userId: string) => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await updateDoc(postRef, {
+      likes: arrayUnion(userId)
+    });
+  } catch (error) {
+    console.error("Erro ao curtir post:", error);
+  }
+};
+
+export const addComment = async (postId: string, commentData: any) => {
+  try {
+    const postRef = doc(db, 'posts', postId);
+    await updateDoc(postRef, {
+      comments: arrayUnion(commentData)
+    });
+  } catch (error) {
+    console.error("Erro ao adicionar comentário:", error);
+  }
 };
