@@ -20,6 +20,7 @@ export interface UpdateProfileData {
   phone?: string;
   bio?: string;
   avatar?: string;
+  displayName?: string;
 }
 
 export const profileService = {
@@ -39,9 +40,9 @@ export const profileService = {
       });
 
       // Se houver alteração no nome, atualizar também no Firebase Auth
-      if (data.name && auth.currentUser) {
+      if (data.displayName && auth.currentUser) {
         await updateProfile(auth.currentUser, {
-          displayName: data.name
+          displayName: data.displayName
         });
       }
 
@@ -91,4 +92,4 @@ export const profileService = {
       throw error;
     }
   }
-}; 
+};
