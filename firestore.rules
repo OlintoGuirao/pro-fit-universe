@@ -41,12 +41,60 @@ service cloud.firestore {
         user1.level == user2.level;
     }
 
+    function getTrainerStudentCount(trainerId) {
+      return getAfter(/databases/$(database)/documents/users/$(trainerId)).data.studentCount || 0;
+    }
+
     // Regras para usuários
     match /users/{userId} {
+      // Permite leitura para usuários autenticados
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAdmin() || isOwner(userId) || isTrainer();
-      allow delete: if isAdmin();
+      
+      // Permite criação de usuários
+      allow create: if request.auth != null && (
+        isAdmin() || 
+        (isTrainer() && request.resource.data.level == 1 && request.resource.data.trainerId == request.auth.uid && getTrainerStudentCount(request.auth.uid) < 5) ||
+        (request.resource.data.level == 2 && request.auth.uid == userId && request.resource.data.trainerCode != null) ||
+        (request.resource.data.level == 1 && request.auth.uid == userId)
+      );
+      
+      // Permite atualização para o próprio usuário, admin ou professor relacionado
+      allow update: if request.auth != null && (
+        isAdmin() || 
+        request.auth.uid == userId || 
+        (isTrainer() && resource.data.trainerId == request.auth.uid) ||
+        (isTrainer() && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['pendingTrainerApproval', 'trainerId'])) ||
+        // Permite atualização de status online
+        (request.auth.uid == userId && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isOnline', 'lastSeen']))
+      );
+      
+      // Permite deleção apenas para admin
+      allow delete: if request.auth != null && isAdmin();
+
+      // Regra específica para busca de professores pelo código
+      allow list: if isAuthenticated() && (
+        request.query.limit <= 10 &&
+        request.query.filters.size() == 2 &&
+        request.query.filters[0].op == '==' &&
+        request.query.filters[0].field == 'level' &&
+        request.query.filters[0].value == 2 &&
+        request.query.filters[1].op == '==' &&
+        request.query.filters[1].field == 'trainerCode'
+      );
+
+      // Regra específica para listar solicitações de alunos pendentes
+      allow list: if isAuthenticated() && (
+        request.query.limit <= 10 &&
+        request.query.filters.size() == 2 &&
+        request.query.filters[0].op == '==' &&
+        request.query.filters[0].field == 'trainerId' &&
+        request.query.filters[0].value == request.auth.uid &&
+        request.query.filters[1].op == '==' &&
+        request.query.filters[1].field == 'pendingTrainerApproval' &&
+        request.query.filters[1].value == true
+      );
     }
 
     // Regras para mensagens
@@ -93,17 +141,16 @@ service cloud.firestore {
 
     // Regras para treinos
     match /workouts/{workoutId} {
-      allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || 
-        resource.data.createdBy == request.auth.uid ||
-        isStudentTrainer(resource.data.studentId)
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (
         request.resource.data.createdBy == request.auth.uid
       );
       allow update: if isAuthenticated() && (
         resource.data.createdBy == request.auth.uid ||
-        isStudentTrainer(resource.data.studentId)
+        isStudentTrainer(resource.data.studentId) ||
+        (resource.data.studentId == request.auth.uid && 
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['status', 'workoutTime', 'completedAt', 'completedDate', 'completedExercises']))
       );
       allow delete: if isAuthenticated() && (
         resource.data.createdBy == request.auth.uid ||
@@ -115,14 +162,17 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && (
         resource.data.studentId == request.auth.uid || 
-        resource.data.trainerId == request.auth.uid
+        resource.data.trainerId == request.auth.uid ||
+        isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.resource.data.trainerId == request.auth.uid
+        isTrainer() || 
+        (isStudent() && request.resource.data.type == 'evaluation' && request.resource.data.studentId == request.auth.uid)
       );
       allow update: if isAuthenticated() && (
         resource.data.trainerId == request.auth.uid ||
-        resource.data.studentId == request.auth.uid
+        resource.data.studentId == request.auth.uid ||
+        isAdmin()
       );
       allow delete: if isAuthenticated() && (
         resource.data.trainerId == request.auth.uid ||
@@ -132,10 +182,7 @@ service cloud.firestore {
 
     // Regras para sugestões
     match /suggestions/{suggestionId} {
-      allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || 
-        resource.data.trainerId == request.auth.uid
-      );
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && (
         request.resource.data.trainerId == request.auth.uid
       );
@@ -213,6 +260,17 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         isAdmin()
       );
+    }
+
+    // Regras para avaliações
+    match /evaluations/{evaluationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid || 
+        resource.data.trainerId == request.auth.uid
+      );
+      allow create: if isTrainer();
+      allow update: if isTrainer() && resource.data.trainerId == request.auth.uid;
+      allow delete: if isTrainer() && resource.data.trainerId == request.auth.uid;
     }
   }
 }

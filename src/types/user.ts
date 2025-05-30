@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   name: string;
@@ -19,6 +18,10 @@ export interface User {
   phone?: string;
   bio?: string;
   trainerId?: string;
+  trainerCode?: string;
+  pendingTrainerApproval?: boolean;
+  isOnline?: boolean;
+  lastSeen?: Date;
 }
 
 export type UserType = User;

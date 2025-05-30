@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -8,7 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Search } from 'lucide-react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+interface Trainer {
+  id: string;
+  name: string;
+  email: string;
+  trainerCode: string;
+}
 
 interface RegisterFormProps {
   onBackToLogin?: () => void;
@@ -19,13 +28,64 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
   const { register } = useAuth();
   const { addToast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [selectedTrainer, setSelectedTrainer] = useState<string>('');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'student'
+    role: ''
   });
+
+  useEffect(() => {
+    const searchTrainers = async () => {
+      if (searchTerm.length < 3) {
+        setTrainers([]);
+        return;
+      }
+
+      try {
+        const trainersRef = collection(db, 'users');
+        const q = query(
+          trainersRef,
+          where('level', '==', 2),
+          where('trainerCode', '==', searchTerm.toUpperCase())
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const trainersList = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Trainer[];
+        
+        if (trainersList.length > 0) {
+          setSelectedTrainer(trainersList[0].id);
+          addToast({
+            type: 'success',
+            message: 'Professor encontrado! A solicitação será enviada automaticamente.'
+          });
+        } else {
+          setSelectedTrainer('');
+          addToast({
+            type: 'error',
+            message: 'Código de professor inválido.'
+          });
+        }
+        
+        setTrainers(trainersList);
+      } catch (error) {
+        console.error('Erro ao buscar professores:', error);
+        addToast({
+          type: 'error',
+          message: 'Erro ao buscar professor. Tente novamente.'
+        });
+      }
+    };
+
+    searchTrainers();
+  }, [searchTerm]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -33,13 +93,19 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
       ...prev,
       [name]: value
     }));
+
+    if (name === 'trainerCode') {
+      setSearchTerm(value);
+    }
   };
 
   const handleRoleChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      role: value
+      role: value as 'student' | 'trainer'
     }));
+    setSelectedTrainer('');
+    setSearchTerm('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,7 +122,7 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
     }
 
     try {
-      await register(formData.email, formData.password, formData.name, formData.role);
+      await register(formData.email, formData.password, formData.name, formData.role, selectedTrainer);
       addToast({
         type: 'success',
         message: 'Cadastro realizado com sucesso!'
@@ -173,7 +239,7 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
                   disabled={isLoading}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tipo de conta" />
+                    <SelectValue placeholder="Selecionar tipo da conta" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="student">Aluno</SelectItem>
@@ -181,6 +247,27 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
                   </SelectContent>
                 </Select>
               </div>
+
+              {formData.role === 'student' && (
+                <div className="space-y-2">
+                  <Label htmlFor="trainerCode">Código do Professor (opcional)</Label>
+                  <div className="relative">
+                    <Input
+                      id="trainerCode"
+                      name="trainerCode"
+                      value={searchTerm}
+                      onChange={handleInputChange}
+                      placeholder="Digite o código do professor"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  {selectedTrainer && (
+                    <p className="text-sm text-green-600">
+                      Professor encontrado! A solicitação será enviada automaticamente.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-col space-y-2">
                 <Button type="submit" className="w-full" disabled={isLoading}>
