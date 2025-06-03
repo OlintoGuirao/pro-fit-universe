@@ -47,42 +47,27 @@ service cloud.firestore {
 
     // Regras para usuários
     match /users/{userId} {
-      // Permite leitura para usuários autenticados
-      allow read: if isAuthenticated();
+      // Permite leitura para qualquer pessoa (necessário para cadastro)
+      allow read: if true;
       
-      // Permite criação de usuários
-      allow create: if request.auth != null && (
-        isAdmin() || 
-        (isTrainer() && request.resource.data.level == 1 && request.resource.data.trainerId == request.auth.uid && getTrainerStudentCount(request.auth.uid) < 5) ||
-        (request.resource.data.level == 2 && request.auth.uid == userId && request.resource.data.trainerCode != null) ||
-        (request.resource.data.level == 1 && request.auth.uid == userId)
-      );
+      // Permite criação de usuários sem autenticação
+      allow create: if true;
       
       // Permite atualização para o próprio usuário, admin ou professor relacionado
       allow update: if request.auth != null && (
         isAdmin() || 
         request.auth.uid == userId || 
         (isTrainer() && resource.data.trainerId == request.auth.uid) ||
-        (isTrainer() && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['pendingTrainerApproval', 'trainerId'])) ||
-        // Permite atualização de status online
-        (request.auth.uid == userId && request.resource.data.diff(resource.data).affectedKeys()
+        // Permite atualização do status online/offline
+        (request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['isOnline', 'lastSeen']))
       );
       
       // Permite deleção apenas para admin
       allow delete: if request.auth != null && isAdmin();
 
-      // Regra específica para busca de professores pelo código
-      allow list: if isAuthenticated() && (
-        request.query.limit <= 10 &&
-        request.query.filters.size() == 2 &&
-        request.query.filters[0].op == '==' &&
-        request.query.filters[0].field == 'level' &&
-        request.query.filters[0].value == 2 &&
-        request.query.filters[1].op == '==' &&
-        request.query.filters[1].field == 'trainerCode'
-      );
+      // Regra específica para busca de professores
+      allow list: if true;
 
       // Regra específica para listar solicitações de alunos pendentes
       allow list: if isAuthenticated() && (

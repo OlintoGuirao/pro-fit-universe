@@ -147,9 +147,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const register = async (email: string, password: string, name: string, role: string, trainerId?: string) => {
     try {
+      console.log('Iniciando registro:', { email, name, role, trainerId });
+      
+      // Criar usuário no Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log('Usuário criado no Firebase Auth:', user.uid);
 
+      // Preparar dados do usuário
       const userData = {
         id: user.uid,
         email: user.email,
@@ -157,26 +162,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         level: role === 'trainer' ? 2 : 1,
         isActive: true,
         createdAt: new Date(),
-        ...(role === 'trainer' && { trainerCode: generateTrainerCode() }),
+        isOnline: true,
+        lastSeen: new Date(),
+        ...(role === 'trainer' && { 
+          trainerCode: generateTrainerCode(),
+          students: [],
+          maxStudents: 5
+        }),
         ...(role === 'student' && trainerId && { 
           trainerId, 
-          pendingTrainerApproval: true,
-          isOnline: true,
-          lastSeen: new Date()
+          pendingTrainerApproval: true
         })
       };
 
-      await setDoc(doc(db, 'users', user.uid), userData);
+      console.log('Criando documento do usuário:', userData);
 
-      // Se for um aluno com professor, atualizar a lista de alunos do professor
+      // Criar documento do usuário no Firestore
+      await setDoc(doc(db, 'users', user.uid), userData);
+      console.log('Documento do usuário criado com sucesso');
+
+      // Se for um aluno com professor, tentar atualizar a lista de alunos do professor
       if (role === 'student' && trainerId) {
-        const trainerRef = doc(db, 'users', trainerId);
-        await updateDoc(trainerRef, {
-          students: arrayUnion(user.uid)
-        });
+        try {
+          console.log('Atualizando lista de alunos do professor:', trainerId);
+          const trainerRef = doc(db, 'users', trainerId);
+          const trainerDoc = await getDoc(trainerRef);
+          
+          if (trainerDoc.exists()) {
+            const trainerData = trainerDoc.data();
+            const students = trainerData.students || [];
+            
+            if (!students.includes(user.uid)) {
+              await updateDoc(trainerRef, {
+                students: arrayUnion(user.uid)
+              });
+              console.log('Lista de alunos do professor atualizada');
+            } else {
+              console.log('Aluno já está na lista do professor');
+            }
+          } else {
+            console.warn('Professor não encontrado');
+          }
+        } catch (error) {
+          console.warn('Não foi possível atualizar a lista de alunos do professor:', error);
+          // Não interrompe o fluxo de registro se falhar ao atualizar a lista de alunos
+        }
       }
 
       setUser(userData);
+      console.log('Registro concluído com sucesso');
+      return userData;
     } catch (error) {
       console.error('Erro ao registrar:', error);
       throw error;

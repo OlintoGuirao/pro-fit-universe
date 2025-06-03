@@ -17,6 +17,7 @@ interface Trainer {
   name: string;
   email: string;
   trainerCode: string;
+  level: number;
 }
 
 interface RegisterFormProps {
@@ -43,6 +44,7 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
     const searchTrainers = async () => {
       if (searchTerm.length < 3) {
         setTrainers([]);
+        setSelectedTrainer('');
         return;
       }
 
@@ -50,15 +52,29 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
         const trainersRef = collection(db, 'users');
         const q = query(
           trainersRef,
-          where('level', '==', 2),
-          where('trainerCode', '==', searchTerm.toUpperCase())
+          where('level', '==', 2)
         );
         
+        console.log('Buscando professores...');
+        
         const querySnapshot = await getDocs(q);
-        const trainersList = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Trainer[];
+        const trainersList = querySnapshot.docs
+          .map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.name || '',
+              email: data.email || '',
+              trainerCode: data.trainerCode || '',
+              level: data.level || 0
+            } as Trainer;
+          })
+          .filter(trainer => 
+            trainer.trainerCode && 
+            trainer.trainerCode.trim().toUpperCase() === searchTerm.toUpperCase().trim()
+          );
+        
+        console.log('Professores encontrados:', trainersList);
         
         if (trainersList.length > 0) {
           setSelectedTrainer(trainersList[0].id);
@@ -75,12 +91,27 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
         }
         
         setTrainers(trainersList);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Erro ao buscar professores:', error);
-        addToast({
-          type: 'error',
-          message: 'Erro ao buscar professor. Tente novamente.'
+        console.error('Detalhes do erro:', {
+          code: error.code,
+          message: error.message,
+          stack: error.stack
         });
+        setSelectedTrainer('');
+        setTrainers([]);
+        
+        if (error.code === 'permission-denied') {
+          addToast({
+            type: 'error',
+            message: 'Erro de permissão ao buscar professor. Por favor, tente novamente.'
+          });
+        } else {
+          addToast({
+            type: 'error',
+            message: 'Erro ao buscar professor. Tente novamente.'
+          });
+        }
       }
     };
 
@@ -95,7 +126,7 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
     }));
 
     if (name === 'trainerCode') {
-      setSearchTerm(value);
+      setSearchTerm(value.toUpperCase());
     }
   };
 
@@ -112,29 +143,53 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
     e.preventDefault();
     setIsLoading(true);
 
-    if (formData.password !== formData.confirmPassword) {
-      addToast({
-        type: 'error',
-        message: 'As senhas não coincidem.'
-      });
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      await register(formData.email, formData.password, formData.name, formData.role, selectedTrainer);
+      // Validações básicas
+      if (!formData.name || !formData.email || !formData.password) {
+        throw new Error('Por favor, preencha todos os campos obrigatórios');
+      }
+
+      if (formData.password !== formData.confirmPassword) {
+        throw new Error('As senhas não coincidem');
+      }
+
+      if (formData.password.length < 6) {
+        throw new Error('A senha deve ter pelo menos 6 caracteres');
+      }
+
+      if (formData.role === 'student' && !selectedTrainer) {
+        throw new Error('Por favor, insira um código de professor válido');
+      }
+
+      // Registrar usuário
+      await register(
+        formData.email,
+        formData.password,
+        formData.name,
+        formData.role,
+        selectedTrainer
+      );
+
       addToast({
         type: 'success',
         message: 'Cadastro realizado com sucesso!'
       });
-      navigate('/');
+
+      // Redirecionar para a página inicial
+      navigate('/', { replace: true });
     } catch (error: any) {
+      console.error('Erro ao registrar:', error);
+      
       let message = 'Erro ao fazer cadastro. Tente novamente.';
       
       if (error.code === 'auth/email-already-in-use') {
         message = 'Este email já está em uso.';
       } else if (error.code === 'auth/weak-password') {
         message = 'A senha é muito fraca. Use pelo menos 6 caracteres.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Email inválido.';
+      } else if (error.message) {
+        message = error.message;
       }
       
       addToast({
@@ -154,7 +209,7 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
             <span className="text-white text-2xl">💪</span>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-            FitLife
+            WordFit
           </h1>
           <p className="text-gray-600 mt-2">Crie sua conta para começar</p>
         </div>

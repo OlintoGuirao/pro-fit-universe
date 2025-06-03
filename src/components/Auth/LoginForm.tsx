@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RegisterForm } from './RegisterForm';
-import { Loader2, Mail, Lock, User } from 'lucide-react';
+import { Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 export function LoginForm() {
   const navigate = useNavigate();
@@ -177,6 +177,20 @@ export function LoginForm() {
             </div>
           </Button>
         ))}
+      </div>
+
+      <div className="text-center">
+        <p className="text-sm text-gray-600">
+          Não tem uma conta?{' '}
+          <Button 
+            variant="link" 
+            className="p-0 h-auto text-blue-600 hover:text-blue-800 font-medium inline-flex items-center"
+            onClick={() => setShowRegister(true)}
+          >
+            Criar conta
+            <ArrowRight className="ml-1 h-4 w-4" />
+          </Button>
+        </p>
       </div>
     </form>
   );

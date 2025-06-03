@@ -1,6 +1,6 @@
 {
-  "name": "FitLife",
-  "short_name": "FitLife",
+  "name": "WordFit",
+  "short_name": "WordFit",
   "description": "Sua jornada fitness começa aqui",
   "start_url": "/",
   "display": "standalone",

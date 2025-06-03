@@ -60,7 +60,7 @@ const Navbar = ({ sidebarOpen, setSidebarOpen }: NavbarProps) => {
                   <span className="text-white font-bold text-sm sm:text-lg">💪</span>
                 </div>
                 <span className="ml-2 text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  FitLife
+                  WordFit
                 </span>
               </div>
             </div>
