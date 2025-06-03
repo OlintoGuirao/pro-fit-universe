@@ -3,10 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Users, Calendar, FileText, Bell, Copy } from 'lucide-react';
+import { Users, Calendar, FileText, Bell, Copy, Loader2, Plus, Trash2 } from 'lucide-react';
 import AIChat from './AIChat';
 import { useAuth } from '@/contexts/AuthContext';
-import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, onSnapshot, orderBy, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -36,6 +36,7 @@ import { auth } from "@/lib/firebase";
 import { createStudent } from '@/lib/db/queries';
 import { StudentRequests } from './StudentRequests';
 import { TrainerProfile } from './TrainerProfile';
+import { getAuth } from "firebase/auth";
 
 interface Student {
   id: string;
@@ -74,6 +75,20 @@ interface Workout {
   createdAt: any;
   status: 'pending' | 'completed';
   createdBy?: string;
+  expiresAt?: any;
+}
+
+interface Diet {
+  id?: string;
+  studentId: string;
+  studentName: string;
+  title: string;
+  description?: string;
+  meals?: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+  createdBy?: string;
+  trainerId?: string;
 }
 
 const TrainerDashboard = () => {
@@ -97,6 +112,7 @@ const TrainerDashboard = () => {
     password: '',
   });
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [diets, setDiets] = useState<Diet[]>([]);
   const [isLoadingWorkouts, setIsLoadingWorkouts] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
 
@@ -214,25 +230,23 @@ const TrainerDashboard = () => {
       try {
         setIsLoadingWorkouts(true);
         const workoutsRef = collection(db, 'workouts');
-        const q = query(workoutsRef, where('createdBy', '==', user.id));
-        const querySnapshot = await getDocs(q);
+        const q = query(
+          workoutsRef,
+          where('createdBy', '==', user.id),
+          orderBy('createdAt', 'desc'),
+          orderBy('__name__', 'desc')
+        );
         
+        const querySnapshot = await getDocs(q);
         const workoutsData = querySnapshot.docs.map(doc => ({
           id: doc.id,
-          studentId: doc.data().studentId || '',
-          studentName: doc.data().studentName || '',
-          title: doc.data().title || '',
-          description: doc.data().description || '',
-          exercises: doc.data().exercises || '',
-          status: doc.data().status || 'pending',
-          createdAt: doc.data().createdAt,
-          createdBy: doc.data().createdBy
-        }));
+          ...doc.data()
+        })) as Workout[];
 
         setWorkouts(workoutsData);
       } catch (error) {
         console.error('Erro ao buscar treinos:', error);
-        toast.error('Erro ao carregar lista de treinos');
+        toast.error('Erro ao carregar treinos');
       } finally {
         setIsLoadingWorkouts(false);
       }
@@ -242,124 +256,273 @@ const TrainerDashboard = () => {
   }, [user]);
 
   const handleCreateWorkout = async () => {
-    if (!user || user.level !== 2) {
-      toast.error('Você precisa estar autenticado como personal trainer para criar treinos');
-      return;
-    }
-
     if (!selectedStudent || !workoutTitle || !workoutExercises) {
       toast.error('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
+    setIsCreatingWorkout(true);
+
     try {
-      // Verificar se o aluno existe e está associado ao professor
-      const studentDoc = await getDoc(doc(db, 'users', selectedStudent));
-      if (!studentDoc.exists()) {
-        toast.error('Aluno não encontrado');
-        return;
-      }
-
-      const studentData = studentDoc.data();
-      if (studentData.trainerId !== user.id) {
-        toast.error('Aluno não está associado a este professor');
-        return;
-      }
-
-      // Criar o treino
+      const selectedStudentData = students.find(s => s.id === selectedStudent);
+      
+      // Calcula a data de expiração (15 dias a partir de agora)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 15);
+      
       const workoutData = {
         studentId: selectedStudent,
-        studentName: studentData.name || 'Aluno',
+        studentName: selectedStudentData?.name || '',
         title: workoutTitle,
-        description: 'Treino criado pelo professor',
+        description: workoutDescription,
         exercises: workoutExercises,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         status: 'pending',
-        createdBy: user.id
+        createdBy: user?.id,
+        expiresAt: expiresAt
       };
 
-      await addDoc(collection(db, 'workouts'), workoutData);
+      const workoutsRef = collection(db, 'workouts');
+      await addDoc(workoutsRef, workoutData);
+
       toast.success('Treino criado com sucesso!');
       
-      // Limpar o formulário
+      // Limpar campos
       setSelectedStudent('');
       setWorkoutTitle('');
+      setWorkoutDescription('');
       setWorkoutExercises('');
+      
+      // Atualizar lista de treinos
+      fetchWorkouts();
     } catch (error) {
       console.error('Erro ao criar treino:', error);
       toast.error('Erro ao criar treino. Tente novamente.');
+    } finally {
+      setIsCreatingWorkout(false);
     }
   };
 
-  const handleCreateDiet = async () => {
-    if (!user || user.level !== 2) {
-      toast.error('Você precisa estar autenticado como personal trainer para criar dietas');
-      return;
-    }
+  // Função para verificar se o treino está próximo de expirar
+  const isWorkoutExpiringSoon = (expiresAt: any) => {
+    if (!expiresAt) return false;
+    const now = new Date();
+    const expirationDate = expiresAt.toDate();
+    const daysUntilExpiration = Math.ceil((expirationDate - now) / (1000 * 60 * 60 * 24));
+    return daysUntilExpiration <= 3 && daysUntilExpiration > 0;
+  };
 
+  // Função para verificar se o treino expirou
+  const isWorkoutExpired = (expiresAt: any) => {
+    if (!expiresAt) return false;
+    const now = new Date();
+    const expirationDate = expiresAt.toDate();
+    return now > expirationDate;
+  };
+
+  // Função para limpar treinos expirados
+  const cleanupExpiredWorkouts = async () => {
+    if (!user?.id) return;
+
+    try {
+      const workoutsRef = collection(db, 'workouts');
+      const q = query(
+        workoutsRef,
+        where('createdBy', '==', user.id),
+        where('status', '==', 'pending')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const now = new Date();
+
+      for (const doc of querySnapshot.docs) {
+        const workout = doc.data();
+        if (workout.expiresAt && workout.expiresAt.toDate() < now) {
+          await deleteDoc(doc.ref);
+        }
+      }
+
+      // Atualizar a lista de treinos após a limpeza
+      fetchWorkouts();
+    } catch (error) {
+      console.error('Erro ao limpar treinos expirados:', error);
+    }
+  };
+
+  // Efeito para limpar treinos expirados periodicamente
+  useEffect(() => {
+    if (user?.id) {
+      cleanupExpiredWorkouts();
+      // Verificar a cada hora
+      const interval = setInterval(cleanupExpiredWorkouts, 3600000);
+      return () => clearInterval(interval);
+    }
+  }, [user?.id]);
+
+  const handleCreateDiet = async () => {
     if (!selectedStudent || !dietTitle || !dietMeals) {
       toast.error('Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
+    if (!user?.id) {
+      toast.error('Usuário não autenticado');
+      return;
+    }
+
+    setIsCreatingDiet(true);
+
     try {
-      // Verificar se o aluno existe e está associado ao professor
-      const studentDoc = await getDoc(doc(db, 'users', selectedStudent));
-      if (!studentDoc.exists()) {
+      const selectedStudentData = students.find(s => s.id === selectedStudent);
+      
+      if (!selectedStudentData) {
         toast.error('Aluno não encontrado');
         return;
       }
 
-      const studentData = studentDoc.data();
-      if (studentData.trainerId !== user.id) {
-        toast.error('Aluno não está associado a este professor');
-        return;
-      }
+      console.log('Dados do aluno selecionado:', selectedStudentData);
 
-      // Processar as refeições
-      const meals = dietMeals.split('\n').reduce((acc: any[], line) => {
-        if (line.trim().startsWith('-')) {
-          const currentMeal = acc[acc.length - 1];
-          if (currentMeal) {
-            currentMeal.foods.push(line.trim().substring(1).trim());
-          }
-        } else if (line.trim()) {
-          acc.push({
-            name: line.trim(),
-            foods: []
-          });
-        }
-        return acc;
-      }, []).filter(meal => meal.foods.length > 0);
-
-      if (meals.length === 0) {
-        toast.error('Por favor, adicione pelo menos uma refeição com alimentos');
-        return;
-      }
-
-      // Criar o plano de dieta
       const dietData = {
-        name: dietTitle,
         studentId: selectedStudent,
-        meals,
-        waterGoal: 2.5,
+        studentName: selectedStudentData.name,
+        title: dietTitle,
+        description: dietDescription || '',
+        meals: dietMeals,
+        createdAt: serverTimestamp(),
+        status: 'pending',
         createdBy: user.id,
-        createdAt: new Date(),
-        isActive: true
+        trainerId: user.id
       };
 
-      await addDoc(collection(db, 'dietPlans'), dietData);
-      toast.success('Plano de dieta criado com sucesso!');
+      console.log('Criando dieta com dados:', dietData);
+
+      const dietsRef = collection(db, 'diets');
+      const docRef = await addDoc(dietsRef, dietData);
       
-      // Limpar o formulário
+      console.log('Dieta criada com ID:', docRef.id);
+      console.log('Dados da dieta criada:', dietData);
+
+      toast.success('Dieta criada com sucesso!');
+      
+      // Limpar campos
       setSelectedStudent('');
       setDietTitle('');
+      setDietDescription('');
       setDietMeals('');
+      
+      // Atualizar lista de dietas
+      await fetchDiets();
     } catch (error) {
-      console.error('Erro ao criar plano de dieta:', error);
-      toast.error('Erro ao criar plano de dieta. Tente novamente.');
+      console.error('Erro ao criar dieta:', error);
+      console.error('Detalhes do erro:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      toast.error('Erro ao criar dieta. Tente novamente.');
+    } finally {
+      setIsCreatingDiet(false);
     }
   };
+
+  const fetchWorkouts = async () => {
+    if (!user?.id) return;
+
+    setIsLoadingWorkouts(true);
+    try {
+      const workoutsRef = collection(db, 'workouts');
+      const q = query(
+        workoutsRef,
+        where('createdBy', '==', user.id),
+        orderBy('createdAt', 'desc'),
+        orderBy('__name__', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const workoutsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Workout[];
+
+      setWorkouts(workoutsData);
+    } catch (error) {
+      console.error('Erro ao buscar treinos:', error);
+      toast.error('Erro ao carregar treinos');
+    } finally {
+      setIsLoadingWorkouts(false);
+    }
+  };
+
+  const fetchDiets = async () => {
+    if (!user?.id) {
+      console.log('Usuário não autenticado, não é possível buscar dietas');
+      return;
+    }
+
+    try {
+      console.log('Dados do usuário:', user);
+      console.log('Nível do usuário:', user.level);
+      console.log('Buscando dietas para o usuário:', user.id);
+      
+      const dietsRef = collection(db, 'diets');
+      console.log('Referência da coleção criada');
+      
+      try {
+        console.log('Executando query...');
+        const q = query(
+          dietsRef,
+          where('trainerId', '==', user.id)
+        );
+        
+        console.log('Query criada:', q);
+        const querySnapshot = await getDocs(q);
+        console.log('Query executada com sucesso');
+        console.log('Número de documentos encontrados:', querySnapshot.size);
+        
+        const dietsData = querySnapshot.docs.map(doc => {
+          const data = doc.data();
+          console.log('Dados do documento:', data);
+          return {
+            id: doc.id,
+            ...data
+          };
+        }) as Diet[];
+        
+        console.log('Dietas encontradas:', dietsData);
+        setDiets(dietsData);
+      } catch (error) {
+        console.error('Erro ao executar query:', error);
+        console.error('Detalhes do erro:', {
+          code: error.code,
+          message: error.message,
+          stack: error.stack
+        });
+        throw error;
+      }
+    } catch (error) {
+      console.error('Erro ao buscar dietas:', error);
+      console.error('Detalhes do erro:', {
+        code: error.code,
+        message: error.message,
+        stack: error.stack
+      });
+      toast.error('Erro ao carregar dietas');
+    }
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchWorkouts();
+      fetchDiets();
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (dietSuggestion) {
+      setDietMeals(dietSuggestion);
+      setDietSuggestion('');
+    }
+  }, [dietSuggestion, setDietSuggestion]);
 
   const handleCreateStudent = async () => {
     if (!user || user.level !== 2) {
@@ -424,6 +587,55 @@ const TrainerDashboard = () => {
       toast.error(error.message || 'Erro ao criar aluno. Tente novamente.');
     } finally {
       setIsCreatingStudent(false);
+    }
+  };
+
+  const handleRemoveWorkout = async (workoutId: string) => {
+    try {
+      const workoutRef = doc(db, 'workouts', workoutId);
+      await deleteDoc(workoutRef);
+      
+      // Atualiza a lista de treinos localmente
+      setWorkouts(prevWorkouts => prevWorkouts.filter(w => w.id !== workoutId));
+      
+      toast.success('Treino removido com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover treino:', error);
+      toast.error('Erro ao remover treino. Tente novamente.');
+    }
+  };
+
+  const handleRemoveDiet = async (dietId: string) => {
+    try {
+      const dietRef = doc(db, 'diets', dietId);
+      await deleteDoc(dietRef);
+      
+      // Atualiza a lista de dietas localmente
+      setDiets(prevDiets => prevDiets.filter(d => d.id !== dietId));
+      
+      toast.success('Dieta removida com sucesso!');
+    } catch (error) {
+      console.error('Erro ao remover dieta:', error);
+      toast.error('Erro ao remover dieta. Tente novamente.');
+    }
+  };
+
+  const handleUnlinkStudent = async (studentId: string) => {
+    try {
+      // Atualiza o documento do aluno removendo o trainerId
+      const studentRef = doc(db, 'users', studentId);
+      await updateDoc(studentRef, {
+        trainerId: null,
+        pendingTrainerApproval: false
+      });
+
+      // Remove o aluno da lista local
+      setStudents(prevStudents => prevStudents.filter(s => s.id !== studentId));
+      
+      toast.success('Aluno desvinculado com sucesso!');
+    } catch (error) {
+      console.error('Erro ao desvincular aluno:', error);
+      toast.error('Erro ao desvincular aluno. Tente novamente.');
     }
   };
 
@@ -526,9 +738,18 @@ const TrainerDashboard = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-2">
                     <Badge className="bg-primary/10 text-primary hover:bg-primary/20">{student.progress || 0}%</Badge>
-                    <p className="text-xs text-muted-foreground mt-1">{student.goal || 'Sem objetivo definido'}</p>
+                    <p className="text-xs text-muted-foreground">{student.goal || 'Sem objetivo definido'}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleUnlinkStudent(student.id)}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Users className="h-4 w-4 mr-2" />
+                      Desvincular
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -552,6 +773,249 @@ const TrainerDashboard = () => {
           </CardHeader>
           <CardContent>
             <StudentRequests />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Seção de Treinos e Dietas */}
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle className="flex items-center text-primary">
+                <FileText className="mr-2 h-5 w-5 text-primary" />
+                Treinos Recentes
+              </CardTitle>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo Treino
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Criar Novo Treino</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Aluno</Label>
+                      <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um aluno" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {students.map((student) => (
+                            <SelectItem key={student.id} value={student.id}>
+                              {student.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Título do Treino</Label>
+                      <Input
+                        value={workoutTitle}
+                        onChange={(e) => setWorkoutTitle(e.target.value)}
+                        placeholder="Ex: Treino A - Peito e Tríceps"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Descrição (opcional)</Label>
+                      <Textarea
+                        value={workoutDescription}
+                        onChange={(e) => setWorkoutDescription(e.target.value)}
+                        placeholder="Adicione uma descrição para o treino"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Exercícios</Label>
+                      <Textarea
+                        value={workoutExercises}
+                        onChange={(e) => setWorkoutExercises(e.target.value)}
+                        placeholder="Liste os exercícios do treino"
+                        className="min-h-[200px]"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={handleCreateWorkout}
+                      disabled={isCreatingWorkout}
+                    >
+                      {isCreatingWorkout ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Criando...
+                        </>
+                      ) : (
+                        'Criar Treino'
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {isLoadingWorkouts ? (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                </div>
+              ) : workouts.length > 0 ? (
+                workouts.map((workout) => (
+                  <div key={workout.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium text-primary">{workout.title}</h3>
+                        <p className="text-sm text-muted-foreground">Aluno: {workout.studentName}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Criado em: {workout.createdAt?.toDate().toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Status: {workout.status === 'pending' ? 'Pendente' : 'Concluído'}
+                        </p>
+                        {workout.expiresAt && (
+                          <p className="text-xs text-muted-foreground">
+                            Expira em: {workout.expiresAt.toDate().toLocaleDateString()}
+                          </p>
+                        )}
+                        {isWorkoutExpiringSoon(workout.expiresAt) && (
+                          <p className="text-xs text-yellow-500 mt-1">
+                            ⚠️ Este treino expira em breve!
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveWorkout(workout.id)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">Nenhum treino criado ainda</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle className="flex items-center text-primary">
+                <FileText className="mr-2 h-5 w-5 text-primary" />
+                Dietas Recentes
+              </CardTitle>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova Dieta
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Criar Nova Dieta</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Aluno</Label>
+                      <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um aluno" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {students.map((student) => (
+                            <SelectItem key={student.id} value={student.id}>
+                              {student.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Título da Dieta</Label>
+                      <Input
+                        value={dietTitle}
+                        onChange={(e) => setDietTitle(e.target.value)}
+                        placeholder="Ex: Dieta para Ganho de Massa"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Descrição (opcional)</Label>
+                      <Textarea
+                        value={dietDescription}
+                        onChange={(e) => setDietDescription(e.target.value)}
+                        placeholder="Adicione uma descrição para a dieta"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Refeições</Label>
+                      <Textarea
+                        value={dietMeals}
+                        onChange={(e) => setDietMeals(e.target.value)}
+                        placeholder="Liste as refeições da dieta"
+                        className="min-h-[200px]"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={handleCreateDiet}
+                      disabled={isCreatingDiet}
+                    >
+                      {isCreatingDiet ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Criando...
+                        </>
+                      ) : (
+                        'Criar Dieta'
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {diets.length > 0 ? (
+                diets.map((diet) => (
+                  <div key={diet.id} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium text-primary">{diet.title}</h3>
+                        <p className="text-sm text-muted-foreground">Aluno: {diet.studentName}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Criado em: {diet.createdAt?.toDate().toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Status: {diet.status === 'pending' ? 'Pendente' : 'Concluído'}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveDiet(diet.id)}
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground text-center">Nenhuma dieta criada ainda</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

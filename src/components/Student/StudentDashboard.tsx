@@ -19,43 +19,110 @@ interface Workout {
   createdBy: string;
 }
 
-const StudentDashboard = () => {
+interface Diet {
+  id: string;
+  title: string;
+  description: string;
+  meals: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+  trainerId: string;
+  studentId: string;
+  studentName: string;
+  createdBy: string;
+}
+
+const StudentDashboard: React.FC = () => {
   const { user } = useAuth();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [diets, setDiets] = useState<Diet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingDiets, setIsLoadingDiets] = useState(true);
   const [weekProgress, setWeekProgress] = useState(0);
   const weekGoal = 5;
 
-  useEffect(() => {
-    const fetchWorkouts = async () => {
-      if (!user) return;
+  const fetchWorkouts = async () => {
+    if (!user) return;
 
-      try {
-        setIsLoading(true);
-        const workoutsRef = collection(db, 'workouts');
-        const q = query(workoutsRef, where('studentId', '==', user.id));
-        const querySnapshot = await getDocs(q);
-        
-        const workoutsData = querySnapshot.docs.map(doc => ({
+    try {
+      setIsLoading(true);
+      const workoutsRef = collection(db, 'workouts');
+      const q = query(workoutsRef, where('studentId', '==', user.id));
+      const querySnapshot = await getDocs(q);
+      
+      const workoutsData = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Workout[];
+
+      setWorkouts(workoutsData);
+      
+      // Calcular progresso semanal
+      const completedWorkouts = workoutsData.filter(w => w.status === 'completed').length;
+      setWeekProgress(completedWorkouts);
+    } catch (error) {
+      console.error('Erro ao buscar treinos:', error);
+      toast.error('Erro ao carregar treinos');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchDiets = async () => {
+    if (!user) {
+      console.log('Usuário não encontrado');
+      return;
+    }
+
+    try {
+      console.log('Iniciando busca de dietas para o aluno:', user.id);
+      setIsLoadingDiets(true);
+      const dietsRef = collection(db, 'diets');
+      const q = query(dietsRef, where('studentId', '==', user.id));
+      const querySnapshot = await getDocs(q);
+      
+      console.log('Query executada, número de documentos:', querySnapshot.size);
+      
+      const dietsData = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        console.log('Dados do documento:', data);
+        return {
           id: doc.id,
-          ...doc.data()
-        })) as Workout[];
+          ...data
+        };
+      }) as Diet[];
 
-        setWorkouts(workoutsData);
-        
-        // Calcular progresso semanal
-        const completedWorkouts = workoutsData.filter(w => w.status === 'completed').length;
-        setWeekProgress(completedWorkouts);
-      } catch (error) {
-        console.error('Erro ao buscar treinos:', error);
-        toast.error('Erro ao carregar treinos');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      console.log('Dietas processadas:', dietsData);
+      setDiets(dietsData);
+      console.log('Estado atualizado com as dietas');
+    } catch (error) {
+      console.error('Erro ao buscar dietas:', error);
+      toast.error('Erro ao carregar dietas');
+    } finally {
+      setIsLoadingDiets(false);
+    }
+  };
 
+  useEffect(() => {
+    console.log('useEffect executado');
     fetchWorkouts();
+    fetchDiets();
   }, [user]);
+
+  useEffect(() => {
+    console.log('Estado das dietas atualizado:', {
+      isLoadingDiets,
+      dietsCount: diets.length,
+      diets
+    });
+  }, [isLoadingDiets, diets]);
+
+  // Novo useEffect para monitorar mudanças no estado
+  useEffect(() => {
+    if (!isLoadingDiets && diets.length > 0) {
+      console.log('Dietas carregadas e prontas para exibição:', diets);
+    }
+  }, [isLoadingDiets, diets]);
 
   const handleCompleteWorkout = async (workoutId: string) => {
     try {
@@ -75,8 +142,6 @@ const StudentDashboard = () => {
       toast.error('Erro ao marcar treino como concluído');
     }
   };
-
-  const progressPercentage = (weekProgress / weekGoal) * 100;
 
   return (
     <div className="space-y-6 p-6">
@@ -100,7 +165,7 @@ const StudentDashboard = () => {
                 <span>Treinos Realizados</span>
                 <span>{weekProgress}/{weekGoal}</span>
               </div>
-              <Progress value={progressPercentage} className="h-2" />
+              <Progress value={(weekProgress / weekGoal) * 100} className="h-2" />
               <p className="text-xs text-gray-500 mt-2">
                 {weekGoal - weekProgress} treinos restantes esta semana
               </p>
@@ -168,22 +233,53 @@ const StudentDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Streak e Conquistas */}
+        {/* Dieta Atual */}
         <Card>
           <CardHeader>
-            <CardTitle>🔥 Sequência Atual</CardTitle>
-            <CardDescription>Dias consecutivos de treino</CardDescription>
+            <CardTitle className="flex items-center">
+              <FileText className="mr-2 h-5 w-5 text-green-500" />
+              Dieta Atual
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-orange-500 mb-2">7</div>
-              <p className="text-gray-600">Dias seguidos treinando!</p>
-              <div className="mt-4 flex justify-center space-x-1">
-                {[...Array(7)].map((_, i) => (
-                  <div key={i} className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                ))}
+            {isLoadingDiets ? (
+              <div className="text-center py-4">Carregando dietas...</div>
+            ) : diets && diets.length > 0 ? (
+              <div className="space-y-4">
+                {diets.map((diet) => {
+                  console.log('Renderizando dieta:', diet);
+                  return (
+                    <div key={diet.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <p className="font-medium text-lg">{diet.title}</p>
+                          <p className="text-sm text-gray-500">{diet.description}</p>
+                          <div className="flex items-center text-sm text-gray-500">
+                            <Calendar className="h-4 w-4 mr-1" />
+                            <span>Criado em: {diet.createdAt?.toDate().toLocaleDateString('pt-BR')}</span>
+                          </div>
+                        </div>
+                        <Badge variant={diet.status === 'pending' ? 'secondary' : 'default'}>
+                          {diet.status === 'pending' ? 'Pendente' : 'Concluído'}
+                        </Badge>
+                      </div>
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium mb-2">Refeições:</h4>
+                        <div className="bg-gray-50 p-3 rounded-md">
+                          <pre className="text-sm whitespace-pre-wrap">{diet.meals}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                <FileText className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                <p>Nenhuma dieta disponível</p>
+                <p className="text-sm text-gray-400 mt-1">Seu professor ainda não criou dietas para você</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

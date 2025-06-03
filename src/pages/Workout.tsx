@@ -29,12 +29,13 @@ interface Workout {
   studentId: string;
   studentName: string;
   createdBy: string;
-  completedExercises?: Exercise[];
-  workoutTime?: number;
-  completedAt?: any;
-  completedDate?: string;
+  completedExercises?: Record<number, Exercise[]>;
+  workoutTime?: Record<number, number>;
+  completedAt?: Record<number, any>;
+  completedDate?: Record<number, string>;
   weekProgress?: number;
   lastCompletedDay?: string;
+  completedDays?: number[];
 }
 
 const Workout = () => {
@@ -43,8 +44,10 @@ const Workout = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [activeWorkoutId, setActiveWorkoutId] = useState<string | null>(null);
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
+  const [workoutStartTime, setWorkoutStartTime] = useState<number | null>(null);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
 
-  const { data: workouts = [], isLoading, refetch } = useQuery({
+  const { data: workoutsData = [], isLoading, refetch } = useQuery({
     queryKey: ['student-workouts', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -55,13 +58,20 @@ const Workout = () => {
       
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
-        // Inicializa os exercícios como não concluídos se não existirem
         const exercises = data.exercises.split('\n').filter((line: string) => line.trim().startsWith('-'));
-        const completedExercises = data.completedExercises || exercises.map((ex: string) => ({
-          id: Math.random().toString(36).substr(2, 9),
-          name: ex.trim().replace(/^- /, ''),
-          completed: false
-        }));
+        const completedExercises = data.completedExercises || {};
+        
+        // Inicializa os exercícios para cada dia
+        const days = splitWorkoutByDays(data.exercises);
+        days.forEach((day, dayIndex) => {
+          if (!completedExercises[dayIndex]) {
+            completedExercises[dayIndex] = day.exercises.map(ex => ({
+              id: ex.id,
+              name: ex.name,
+              completed: false
+            }));
+          }
+        });
 
         return {
           id: doc.id,
@@ -72,26 +82,96 @@ const Workout = () => {
     }
   });
 
+  // Atualiza o estado local quando os dados do query mudam
+  React.useEffect(() => {
+    if (workoutsData.length > 0) {
+      setWorkouts(workoutsData);
+    }
+  }, [workoutsData]);
+
+  // Recupera o treino ativo e o tempo do localStorage ao carregar
+  React.useEffect(() => {
+    const savedActiveWorkout = localStorage.getItem('activeWorkout');
+    if (savedActiveWorkout) {
+      const { workoutId, dayIndex, startTime } = JSON.parse(savedActiveWorkout);
+      setActiveWorkoutId(workoutId);
+      setActiveDayIndex(dayIndex);
+      setWorkoutStartTime(startTime);
+    }
+  }, []);
+
   const handleStartWorkout = (workoutId: string, dayIndex: number) => {
+    // Verifica se já existe um treino ativo no mesmo dia
+    const today = new Date().toISOString().split('T')[0];
+    const hasActiveWorkoutToday = workouts.some(w => 
+      w.completedDate?.[dayIndex] === today && w.id !== workoutId
+    );
+
+    if (hasActiveWorkoutToday) {
+      toast.error('Você já iniciou um treino hoje. Finalize-o antes de começar outro.');
+      return;
+    }
+
+    const startTime = Date.now();
     setActiveWorkoutId(workoutId);
     setActiveDayIndex(dayIndex);
+    setWorkoutStartTime(startTime);
+    
+    // Salva o treino ativo e o tempo inicial no localStorage
+    localStorage.setItem('activeWorkout', JSON.stringify({ 
+      workoutId, 
+      dayIndex,
+      startTime 
+    }));
   };
 
-  const handleCompleteWorkout = async (workoutId: string, workoutTime?: number) => {
+  const handleCompleteWorkout = async (workoutId: string, dayIndex: number, workoutTime?: number) => {
     try {
+      const workout = workouts.find(w => w.id === workoutId);
+      if (!workout) return;
+
+      // Verifica se todos os exercícios do dia foram concluídos
+      const completedExercises = workout.completedExercises?.[dayIndex] || [];
+      const allExercisesCompleted = completedExercises.every(ex => ex.completed);
+
+      if (!allExercisesCompleted) {
+        toast.error('Complete todos os exercícios antes de finalizar o treino');
+        return;
+      }
+
       const workoutRef = doc(db, 'workouts', workoutId);
       const now = new Date();
       
-      await updateDoc(workoutRef, {
-        status: 'completed',
-        workoutTime: workoutTime || 0,
-        completedAt: now,
-        completedDate: now.toISOString().split('T')[0] // Salva a data no formato YYYY-MM-DD
+      const completedDays = workout.completedDays || [];
+      if (!completedDays.includes(dayIndex)) {
+        completedDays.push(dayIndex);
+      }
+
+      // Calcula o tempo total do treino
+      const totalTime = workoutTime || (workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000) : 0);
+      
+      const updateData: Record<string, any> = {
+        completedDays,
+        [`workoutTime.${dayIndex}`]: totalTime,
+        [`completedAt.${dayIndex}`]: now,
+        [`completedDate.${dayIndex}`]: now.toISOString().split('T')[0]
+      };
+
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+        }
       });
+      
+      await updateDoc(workoutRef, updateData);
+      
+      // Remove o treino ativo do localStorage
+      localStorage.removeItem('activeWorkout');
       
       toast.success('Treino marcado como concluído!');
       setActiveWorkoutId(null);
       setActiveDayIndex(null);
+      setWorkoutStartTime(null);
       refetch();
     } catch (error) {
       console.error('Erro ao atualizar treino:', error);
@@ -101,27 +181,31 @@ const Workout = () => {
 
   const handleExerciseToggle = async (workoutId: string, dayIndex: number, exerciseId: string) => {
     try {
+      // Encontra o treino
       const workout = workouts.find(w => w.id === workoutId);
       if (!workout) return;
 
-      const dayExercises = splitWorkoutByDays(workout.exercises)[dayIndex]?.exercises || [];
-      const updatedExercises = dayExercises.map(ex => 
-        ex.id === exerciseId ? { ...ex, completed: !ex.completed } : ex
-      );
+      // Obtém os exercícios do dia atual
+      const dayExercises = workout.completedExercises?.[dayIndex] || [];
+      
+      // Atualiza o estado do exercício
+      const updatedExercises = dayExercises.map(ex => {
+        if (ex.id === exerciseId) {
+          return { ...ex, completed: !ex.completed };
+        }
+        return ex;
+      });
 
+      // Atualiza o banco de dados
       const workoutRef = doc(db, 'workouts', workoutId);
       await updateDoc(workoutRef, {
         [`completedExercises.${dayIndex}`]: updatedExercises
       });
 
-      // Atualiza o status do treino se todos os exercícios estiverem concluídos
-      const allCompleted = updatedExercises.every(ex => ex.completed);
-      if (allCompleted && workout.status !== 'completed') {
-        await handleCompleteWorkout(workoutId);
-      }
+      // Força uma atualização dos dados
+      await refetch();
 
       toast.success('Exercício atualizado!');
-      refetch();
     } catch (error) {
       console.error('Erro ao atualizar exercício:', error);
       toast.error('Erro ao marcar exercício como concluído');
@@ -162,10 +246,10 @@ const Workout = () => {
         // Extrai os exercícios deste dia específico
         const dayExercises = content
           .split('\n')
-          .filter(line => line.trim().startsWith('-'))
+          .filter(line => line.trim())
           .map(line => ({
             id: Math.random().toString(36).substr(2, 9),
-            name: line.trim().replace(/^- /, ''),
+            name: line.trim(),
             completed: false
           }));
         
@@ -219,24 +303,9 @@ const Workout = () => {
             <div className="flex justify-between items-center mb-2">
               <h3 className="font-medium">Progresso Semanal</h3>
               <Badge variant="secondary">
-                {workouts.filter(w => {
-                  if (w.status !== 'completed' || !w.completedAt) return false;
-                  const today = new Date();
-                  const startOfWeek = new Date(today);
-                  startOfWeek.setDate(today.getDate() - today.getDay());
-                  const endOfWeek = new Date(startOfWeek);
-                  endOfWeek.setDate(startOfWeek.getDate() + 6);
-                  const completedDate = w.completedAt.toDate();
-                  return completedDate >= startOfWeek && completedDate <= endOfWeek;
-                }).length}/{workouts.filter(w => {
-                  const today = new Date();
-                  const startOfWeek = new Date(today);
-                  startOfWeek.setDate(today.getDate() - today.getDay());
-                  const endOfWeek = new Date(startOfWeek);
-                  endOfWeek.setDate(startOfWeek.getDate() + 6);
-                  const createdDate = w.createdAt.toDate();
-                  return createdDate >= startOfWeek && createdDate <= endOfWeek;
-                }).length} treinos
+                {workouts.reduce((total, workout) => {
+                  return total + (workout.completedDays?.length || 0);
+                }, 0)}/5 dias de treino
               </Badge>
             </div>
             <Progress value={getWeekProgress()} className="h-2" />
@@ -258,26 +327,30 @@ const Workout = () => {
             <div key={`main-${workout.id}`} className="space-y-6">
               {splitWorkoutByDays(workout.exercises).map((day, index) => (
                 <Card key={index} className="hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-xl flex items-center">
-                          {day.title}
-                          {workout.status === 'completed' && (
-                            <CheckCircle2 className="ml-2 h-5 w-5 text-green-500" />
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-0">
+                      <div className="space-y-1 w-full sm:w-auto">
+                        <CardTitle className="text-lg sm:text-xl flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-primary">{day.title.split(' – ')[0]}</span>
+                          <span className="text-muted-foreground">–</span>
+                          <span className="font-medium">{day.title.split(' – ')[1]}</span>
+                          {workout.completedDays?.includes(index) && (
+                            <CheckCircle2 className="h-5 w-5 text-green-500" />
                           )}
                         </CardTitle>
                         {workout.workoutTime && workout.status === 'completed' && (
-                          <div className="text-sm text-muted-foreground mt-1">
-                            Tempo total: {formatTime(workout.workoutTime)}
+                          <div className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            Tempo total: {formatTime(workout.workoutTime[index] || 0)}
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => toggleWorkout(`${workout.id}-${index}`)}
+                          className="hover:bg-gray-100"
                         >
                           {expandedWorkouts[`${workout.id}-${index}`] ? (
                             <ChevronUp className="h-4 w-4" />
@@ -289,16 +362,28 @@ const Workout = () => {
                           <div className="flex items-center gap-2">
                             {activeWorkoutId === workout.id && activeDayIndex === index && (
                               <Timer 
-                                onComplete={(time) => handleCompleteWorkout(workout.id, time)}
+                                onComplete={(time) => handleCompleteWorkout(workout.id, index, time)}
                                 autoStart={true}
+                                initialTime={workoutStartTime ? Math.floor((Date.now() - workoutStartTime) / 1000) : 0}
                               />
                             )}
                             <Button
                               variant={activeWorkoutId === workout.id && activeDayIndex === index ? "secondary" : "default"}
-                              onClick={() => activeWorkoutId === workout.id && activeDayIndex === index
-                                ? handleCompleteWorkout(workout.id)
-                                : handleStartWorkout(workout.id, index)
-                              }
+                              onClick={() => {
+                                if (activeWorkoutId === workout.id && activeDayIndex === index) {
+                                  const dayExercises = splitWorkoutByDays(workout.exercises)[index]?.exercises || [];
+                                  const allExercisesCompleted = dayExercises.every(ex => ex.completed);
+                                  
+                                  if (!allExercisesCompleted) {
+                                    toast.error('Complete todos os exercícios antes de finalizar o treino');
+                                    return;
+                                  }
+                                  handleCompleteWorkout(workout.id, index);
+                                } else {
+                                  handleStartWorkout(workout.id, index);
+                                }
+                              }}
+                              className="min-w-[120px]"
                             >
                               {activeWorkoutId === workout.id && activeDayIndex === index ? 'Finalizar Treino' : 'Iniciar Treino'}
                             </Button>
@@ -307,34 +392,39 @@ const Workout = () => {
                       </div>
                     </div>
                   </CardHeader>
-                  {expandedWorkouts[`${workout.id}-${index}`] && (
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="space-y-2">
-                            {splitWorkoutByDays(workout.exercises)[index]?.exercises.map((exercise) => (
-                              <div key={exercise.id} className="flex items-center space-x-2">
+                  <CardContent className="pt-0">
+                    {expandedWorkouts[`${workout.id}-${index}`] && (
+                      <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium text-gray-600 mb-2">
+                          <Dumbbell className="h-4 w-4" />
+                          Exercícios
+                        </div>
+                        <div className="space-y-2.5">
+                          {day.exercises.map((exercise, exerciseIndex) => {
+                            const isCompleted = workout.completedExercises?.[index]?.find(
+                              ex => ex.id === exercise.id
+                            )?.completed || false;
+
+                            return (
+                              <div 
+                                key={exerciseIndex} 
+                                className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors"
+                              >
                                 <Checkbox
-                                  id={exercise.id}
-                                  checked={exercise.completed}
+                                  checked={isCompleted}
                                   onCheckedChange={() => handleExerciseToggle(workout.id, index, exercise.id)}
                                   className="data-[state=checked]:bg-green-500 data-[state=checked]:border-green-500"
                                 />
-                                <label
-                                  htmlFor={exercise.id}
-                                  className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${
-                                    exercise.completed ? 'line-through text-gray-500' : ''
-                                  }`}
-                                >
+                                <span className={`text-sm ${isCompleted ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
                                   {exercise.name}
-                                </label>
+                                </span>
                               </div>
-                            ))}
-                          </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </CardContent>
-                  )}
+                    )}
+                  </CardContent>
                 </Card>
               ))}
             </div>

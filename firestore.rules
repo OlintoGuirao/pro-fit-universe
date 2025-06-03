@@ -2,24 +2,26 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // Funções auxiliares
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    function userLevel() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level;
+    }
+
     function isAdmin() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 3;
+      return isAuthenticated() && userLevel() == 3;
     }
 
     function isTrainer() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 2;
+      return isAuthenticated() && userLevel() == 2;
     }
 
     function isStudent() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level == 1;
+      return isAuthenticated() && userLevel() == 1;
     }
 
     function isOwner(userId) {
@@ -27,235 +29,205 @@ service cloud.firestore {
     }
 
     function isStudentTrainer(studentId) {
-      return isAuthenticated() && 
+      return isAuthenticated() &&
         get(/databases/$(database)/documents/users/$(studentId)).data.trainerId == request.auth.uid;
     }
 
     function canCommunicate(userId1, userId2) {
       let user1 = get(/databases/$(database)/documents/users/$(userId1)).data;
       let user2 = get(/databases/$(database)/documents/users/$(userId2)).data;
-      
-      return user1.level == 3 || user2.level == 3 || 
+
+      return user1.level == 3 || user2.level == 3 ||
         (user1.level == 2 && user2.level == 1 && user2.trainerId == user1.id) ||
         (user1.level == 1 && user2.level == 2 && user1.trainerId == user2.id) ||
         user1.level == user2.level;
     }
 
-    function getTrainerStudentCount(trainerId) {
-      return getAfter(/databases/$(database)/documents/users/$(trainerId)).data.studentCount || 0;
-    }
-
-    // Regras para usuários
+    // USERS
     match /users/{userId} {
-      // Permite leitura para qualquer pessoa (necessário para cadastro)
-      allow read: if true;
-      
-      // Permite criação de usuários sem autenticação
-      allow create: if true;
-      
-      // Permite atualização para o próprio usuário, admin ou professor relacionado
-      allow update: if request.auth != null && (
-        isAdmin() || 
-        request.auth.uid == userId || 
-        (isTrainer() && resource.data.trainerId == request.auth.uid) ||
-        // Permite atualização do status online/offline
-        (request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['isOnline', 'lastSeen']))
+      allow read, list, create: if true;
+
+      allow update: if isAuthenticated() && (
+        isAdmin() || isOwner(userId) || (isTrainer() && isStudentTrainer(userId))
       );
-      
-      // Permite deleção apenas para admin
-      allow delete: if request.auth != null && isAdmin();
 
-      // Regra específica para busca de professores
-      allow list: if true;
+      allow delete: if isAuthenticated() && isAdmin();
 
-      // Regra específica para listar solicitações de alunos pendentes
-      allow list: if isAuthenticated() && (
+      // Permite listagem de solicitações pendentes do treinador
+      allow list: if isAuthenticated() &&
         request.query.limit <= 10 &&
         request.query.filters.size() == 2 &&
-        request.query.filters[0].op == '==' &&
         request.query.filters[0].field == 'trainerId' &&
         request.query.filters[0].value == request.auth.uid &&
-        request.query.filters[1].op == '==' &&
         request.query.filters[1].field == 'pendingTrainerApproval' &&
-        request.query.filters[1].value == true
-      );
+        request.query.filters[1].value == true;
     }
 
-    // Regras para mensagens
+    // MESSAGES
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (
-        resource.data.senderId == request.auth.uid || 
+        resource.data.senderId == request.auth.uid ||
         resource.data.receiverId == request.auth.uid ||
         canCommunicate(request.auth.uid, resource.data.senderId) ||
         canCommunicate(request.auth.uid, resource.data.receiverId)
       );
-      allow create: if isAuthenticated() && (
+
+      allow create: if isAuthenticated() &&
         request.resource.data.senderId == request.auth.uid &&
-        canCommunicate(request.resource.data.senderId, request.resource.data.receiverId)
-      );
-      allow update: if isAuthenticated() && (
-        resource.data.senderId == request.auth.uid || 
-        resource.data.receiverId == request.auth.uid
-      );
-      allow delete: if isAuthenticated() && (
-        resource.data.senderId == request.auth.uid || 
+        canCommunicate(request.resource.data.senderId, request.resource.data.receiverId);
+
+      allow update, delete: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
         resource.data.receiverId == request.auth.uid
       );
     }
 
-    // Regras para dietas
-    match /dietPlans/{dietId} {
-      allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || 
-        resource.data.createdBy == request.auth.uid ||
-        isStudentTrainer(resource.data.studentId)
-      );
-      allow create: if isAuthenticated() && (
-        request.resource.data.createdBy == request.auth.uid
-      );
-      allow update: if isAuthenticated() && (
-        resource.data.createdBy == request.auth.uid ||
-        isStudentTrainer(resource.data.studentId)
-      );
-      allow delete: if isAuthenticated() && (
-        resource.data.createdBy == request.auth.uid ||
-        isAdmin()
-      );
+    // DIETS
+    match /diets/{dietId} {
+      allow read, write: if isAuthenticated();
     }
 
-    // Regras para treinos
+    // WORKOUTS
     match /workouts/{workoutId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (
-        request.resource.data.createdBy == request.auth.uid
-      );
+
+      allow list: if isAuthenticated() &&
+        request.query.filters.size() == 3 &&
+        request.query.filters[0].field == 'createdBy' &&
+        request.query.filters[0].value == request.auth.uid &&
+        request.query.filters[1].field == 'createdAt' &&
+        request.query.filters[2].field == '__name__';
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.createdBy == request.auth.uid;
+
       allow update: if isAuthenticated() && (
         resource.data.createdBy == request.auth.uid ||
         isStudentTrainer(resource.data.studentId) ||
-        (resource.data.studentId == request.auth.uid && 
+        (resource.data.studentId == request.auth.uid &&
          request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['status', 'workoutTime', 'completedAt', 'completedDate', 'completedExercises']))
       );
+
       allow delete: if isAuthenticated() && (
-        resource.data.createdBy == request.auth.uid ||
-        isAdmin()
+        resource.data.createdBy == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para tarefas
+    // TASKS
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
         resource.data.trainerId == request.auth.uid ||
         isAdmin()
       );
+
       allow create: if isAuthenticated() && (
-        isTrainer() || 
-        (isStudent() && request.resource.data.type == 'evaluation' && request.resource.data.studentId == request.auth.uid)
+        isTrainer() ||
+        (isStudent() && request.resource.data.type == 'evaluation' &&
+         request.resource.data.studentId == request.auth.uid)
       );
+
       allow update: if isAuthenticated() && (
         resource.data.trainerId == request.auth.uid ||
         resource.data.studentId == request.auth.uid ||
         isAdmin()
       );
+
       allow delete: if isAuthenticated() && (
-        resource.data.trainerId == request.auth.uid ||
-        isAdmin()
+        resource.data.trainerId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para sugestões
+    // SUGGESTIONS
     match /suggestions/{suggestionId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (
-        request.resource.data.trainerId == request.auth.uid
-      );
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.trainerId == request.auth.uid;
+
       allow update: if isAuthenticated() && (
         resource.data.trainerId == request.auth.uid ||
         resource.data.studentId == request.auth.uid
       );
+
       allow delete: if isAuthenticated() && (
-        resource.data.trainerId == request.auth.uid ||
-        isAdmin()
+        resource.data.trainerId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para posts
+    // POSTS
     match /posts/{postId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        resource.data.authorId == request.auth.uid ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        resource.data.authorId == request.auth.uid ||
-        isAdmin()
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.authorId == request.auth.uid;
+
+      allow update, delete: if isAuthenticated() && (
+        resource.data.authorId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para comentários
+    // COMMENTS
     match /comments/{commentId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        resource.data.authorId == request.auth.uid ||
-        isAdmin()
-      );
-      allow delete: if isAuthenticated() && (
-        resource.data.authorId == request.auth.uid ||
-        isAdmin()
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.authorId == request.auth.uid;
+
+      allow update, delete: if isAuthenticated() && (
+        resource.data.authorId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para curtidas
+    // LIKES
     match /likes/{likeId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
       allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin()
+        resource.data.userId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para notificações
+    // NOTIFICATIONS
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read, update: if isAuthenticated() &&
+        resource.data.userId == request.auth.uid;
+
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
       allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin()
+        resource.data.userId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para métricas
+    // METRICS
     match /metrics/{metricId} {
-      allow read: if isAuthenticated() && (
+      allow read, update: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
         isStudentTrainer(resource.data.userId)
       );
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isStudentTrainer(resource.data.userId)
-      );
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
       allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin()
+        resource.data.userId == request.auth.uid || isAdmin()
       );
     }
 
-    // Regras para avaliações
+    // EVALUATIONS
     match /evaluations/{evaluationId} {
       allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid || 
+        resource.data.studentId == request.auth.uid ||
         resource.data.trainerId == request.auth.uid
       );
-      allow create: if isTrainer();
-      allow update: if isTrainer() && resource.data.trainerId == request.auth.uid;
-      allow delete: if isTrainer() && resource.data.trainerId == request.auth.uid;
+
+      allow create, update, delete: if isTrainer() &&
+        resource.data.trainerId == request.auth.uid;
     }
   }
 }

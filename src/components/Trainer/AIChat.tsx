@@ -31,7 +31,6 @@ const AIChat: React.FC = () => {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
-  const [messageHistory, setMessageHistory] = useState<{role: string, content: string}[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const { user } = useAuth();
@@ -76,7 +75,6 @@ const AIChat: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setMessageHistory(prev => [...prev, { role: 'user', content: inputMessage }]);
     setInputMessage('');
     setIsLoading(true);
 
@@ -91,8 +89,8 @@ const AIChat: React.FC = () => {
       };
       setMessages(prev => [...prev, loadingMessage]);
 
-      // Gera resposta da IA com histórico
-      const aiResponse = await generateAIResponse(inputMessage, messageHistory);
+      // Gera resposta da IA
+      const aiResponse = await generateAIResponse(inputMessage);
       
       // Remove mensagem de carregamento e adiciona resposta
       setMessages(prev => {
@@ -105,9 +103,6 @@ const AIChat: React.FC = () => {
           type: messageType
         }];
       });
-
-      // Adiciona resposta ao histórico
-      setMessageHistory(prev => [...prev, { role: 'assistant', content: aiResponse }]);
 
       // Salva sugestão se for treino ou dieta
       if (messageType === 'training') {
@@ -160,11 +155,21 @@ const AIChat: React.FC = () => {
   const detectMessageType = (message: string): 'training' | 'diet' | 'question' => {
     const lowerMessage = message.toLowerCase();
     
-    // Palavras-chave para treino
-    const trainingKeywords = ['treino', 'exercício', 'treinar', 'musculação', 'academia', 'treino de', 'treino para'];
+    // Palavras-chave expandidas para treino
+    const trainingKeywords = [
+      'treino', 'exercício', 'treinar', 'musculação', 'academia',
+      'treino de', 'treino para', 'ficha', 'série', 'repetição',
+      'supino', 'agachamento', 'levantamento', 'corrida', 'cardio',
+      'aeróbico', 'hiit', 'funcional', 'crossfit', 'pilates'
+    ];
     
-    // Palavras-chave para dieta
-    const dietKeywords = ['dieta', 'alimentação', 'nutrição', 'cardápio', 'refeição', 'dieta de', 'dieta para'];
+    // Palavras-chave expandidas para dieta
+    const dietKeywords = [
+      'dieta', 'alimentação', 'nutrição', 'cardápio', 'refeição',
+      'dieta de', 'dieta para', 'calorias', 'proteína', 'carboidrato',
+      'gordura', 'suplemento', 'vitamina', 'mineral', 'água',
+      'café da manhã', 'almoço', 'jantar', 'lanche', 'snack'
+    ];
     
     // Verifica se a mensagem contém palavras-chave de treino
     if (trainingKeywords.some(keyword => lowerMessage.includes(keyword))) {
