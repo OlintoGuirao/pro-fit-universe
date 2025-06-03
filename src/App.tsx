@@ -6,24 +6,37 @@ import { SuggestionProvider } from "@/contexts/SuggestionContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { ToastContainer } from '@/components/ui/ToastContainer';
 import AppRoutes from '@/routes';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useAuth } from '@/contexts/AuthContext';
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <SuggestionProvider>
-            <ToastContainer />
-            <Router>
-              <AppRoutes />
-            </Router>
-          </SuggestionProvider>
-        </AuthProvider>
-      </ToastProvider>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+const AppContent = () => {
+  const { user } = useAuth();
+  useOnlineStatus();
+  
+  return (
+    <Router>
+      <AppRoutes />
+    </Router>
+  );
+};
+
+const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <SuggestionProvider>
+              <ToastContainer />
+              <AppContent />
+            </SuggestionProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;

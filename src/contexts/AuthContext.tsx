@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { User } from '@/types/user';
 
 interface AuthContextType {
@@ -10,8 +10,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  register: (email: string, password: string, name: string, role: string) => Promise<void>;
+  register: (email: string, password: string, name: string, role: string, trainerId?: string) => Promise<void>;
   setUser: (user: User | null | ((prev: User | null) => User | null)) => void;
+  updateUser: (data: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -21,7 +22,8 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   logout: async () => {},
   register: async () => {},
-  setUser: () => {}
+  setUser: () => {},
+  updateUser: async () => {}
 });
 
 export const useAuth = () => {
@@ -40,7 +42,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const userRef = doc(db, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userRef);
           
           if (userDoc.exists()) {
             const userData = userDoc.data();
@@ -48,6 +51,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: firebaseUser.uid,
               ...userData
             } as User;
+            
+            // Atualiza o status online para true
+            await updateDoc(userRef, {
+              isOnline: true,
+              lastSeen: serverTimestamp()
+            });
             
             setUser(userWithId);
           } else {
@@ -59,6 +68,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(null);
         }
       } else {
+        // Se o usuário estiver logado, atualiza o status para offline antes de limpar
+        if (user?.id) {
+          try {
+            const userRef = doc(db, 'users', user.id);
+            await updateDoc(userRef, {
+              isOnline: false,
+              lastSeen: serverTimestamp()
+            });
+          } catch (error) {
+            console.error('Erro ao atualizar status offline:', error);
+          }
+        }
         setUser(null);
       }
       
@@ -66,11 +87,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user?.id]);
 
   const login = async (email: string, password: string) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      
+      // Atualiza o status online para true no login
+      await updateDoc(userRef, {
+        isOnline: true,
+        lastSeen: serverTimestamp()
+      });
       
       let userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
       
@@ -96,6 +124,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...userData
         } as User;
         
+        // Se for um professor (nível 2), armazenar a senha temporariamente
+        if (userData.level === 2) {
+          sessionStorage.setItem('trainerPassword', password);
+        }
+        
         setUser(userWithId);
       } else {
         throw new Error('Dados do usuário não encontrados');
@@ -106,41 +139,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (email: string, password: string, name: string, role: string) => {
+  const generateTrainerCode = () => {
+    const prefix = 'PT';
+    const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `${prefix}${randomNum}`;
+  };
+
+  const register = async (email: string, password: string, name: string, role: string, trainerId?: string) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
+      const user = userCredential.user;
+
       const userData = {
+        id: user.uid,
+        email: user.email,
         name,
-        email,
         level: role === 'trainer' ? 2 : 1,
         isActive: true,
         createdAt: new Date(),
-        updatedAt: new Date()
+        ...(role === 'trainer' && { trainerCode: generateTrainerCode() }),
+        ...(role === 'student' && trainerId && { 
+          trainerId, 
+          pendingTrainerApproval: true,
+          isOnline: true,
+          lastSeen: new Date()
+        })
       };
-      
-      await setDoc(doc(db, 'users', userCredential.user.uid), userData);
-      
-      const userWithId = {
-        id: userCredential.user.uid,
-        ...userData
-      } as User;
-      
-      setUser(userWithId);
+
+      await setDoc(doc(db, 'users', user.uid), userData);
+
+      // Se for um aluno com professor, atualizar a lista de alunos do professor
+      if (role === 'student' && trainerId) {
+        const trainerRef = doc(db, 'users', trainerId);
+        await updateDoc(trainerRef, {
+          students: arrayUnion(user.uid)
+        });
+      }
+
+      setUser(userData);
     } catch (error) {
-      console.error('Erro ao fazer registro:', error);
+      console.error('Erro ao registrar:', error);
       throw error;
     }
   };
 
   const logout = async () => {
     try {
+      if (user?.id) {
+        const userRef = doc(db, 'users', user.id);
+        // Atualiza o status online para false no logout
+        await updateDoc(userRef, {
+          isOnline: false,
+          lastSeen: serverTimestamp()
+        });
+      }
+      // Remover a senha do professor do sessionStorage
+      sessionStorage.removeItem('trainerPassword');
       await signOut(auth);
       setUser(null);
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
       throw error;
     }
+  };
+
+  const updateUser = async (data: Partial<User>) => {
+    // Implementation of updateUser method
   };
 
   return (
@@ -151,7 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       logout, 
       register,
-      setUser 
+      setUser,
+      updateUser
     }}>
       {children}
     </AuthContext.Provider>

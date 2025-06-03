@@ -349,11 +349,14 @@ const SocialFeed = () => {
                     <AvatarImage src={post.author?.avatar || ''} />
                     <AvatarFallback>{post.author?.name?.[0] || 'U'}</AvatarFallback>
                   </Avatar>
-                  <div>
+                  <div className="relative">
                     <p className="font-medium">{post.author?.name}</p>
                     <p className="text-sm text-gray-500">
                       {formatDistanceToNow(post.createdAt, { addSuffix: true, locale: ptBR })}
                     </p>
+                    {post.author?.isOnline && (
+                      <span className="absolute -right-2 top-0 h-2 w-2 rounded-full bg-green-500" />
+                    )}
                   </div>
                 </div>
               </CardHeader>

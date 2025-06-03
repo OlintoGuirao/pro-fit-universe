@@ -1,6 +1,8 @@
 import { db } from '../firebase';
-import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, orderBy, limit, onSnapshot, updateDoc, doc, QuerySnapshot, getDoc, arrayUnion, setDoc } from 'firebase/firestore';
 import { auth } from '../firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
 
 // Função para criar um novo usuário
 export const createUser = async (userId: string, userData: any) => {
@@ -395,7 +397,9 @@ export const subscribeToPosts = (callback: (posts: any[]) => void) => {
                 id: postData.authorId,
                 name: authorData?.name || 'Usuário',
                 avatar: authorData?.avatar || null,
-                role: authorData?.level === 2 ? 'trainer' : 'student'
+                role: authorData?.level === 2 ? 'trainer' : 'student',
+                isOnline: authorData?.isOnline || false,
+                lastSeen: authorData?.lastSeen || null
               }
             };
           })
@@ -445,5 +449,37 @@ export const addComment = async (postId: string, userId: string, content: string
     });
   } catch (error) {
     console.error("Erro ao adicionar comentário:", error);
+  }
+};
+
+export const createStudent = async (studentData: {
+  name: string;
+  email: string;
+  password: string;
+  trainerId: string;
+}) => {
+  try {
+    console.log('Iniciando criação de aluno:', { ...studentData, password: '***' });
+
+    const response = await fetch('/api/auth/create-student', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(studentData),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Erro ao criar aluno');
+    }
+
+    const data = await response.json();
+    console.log('Aluno criado com sucesso:', data);
+
+    return data.uid;
+  } catch (error) {
+    console.error('Erro detalhado ao criar aluno:', error);
+    throw error;
   }
 };

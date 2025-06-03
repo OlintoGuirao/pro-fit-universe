@@ -1,4 +1,3 @@
-
 export interface Post {
   id: string;
   authorId: string;
@@ -14,6 +13,8 @@ export interface Post {
     name: string;
     avatar: string;
     role: string;
+    isOnline: boolean;
+    lastSeen: Date | null;
   };
 }
 

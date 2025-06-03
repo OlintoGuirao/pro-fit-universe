@@ -2,9 +2,98 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Activity, TrendingUp, Scale, Ruler } from 'lucide-react';
+import { Activity, TrendingUp, Scale, Ruler, Dumbbell } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useQuery } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+
+interface Workout {
+  id: string;
+  title: string;
+  description: string;
+  exercises: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+  studentId: string;
+  studentName: string;
+  createdBy: string;
+  completedExercises?: any[];
+  workoutTime?: number;
+  completedAt?: any;
+  completedDate?: string;
+}
 
 const ProgressPage = () => {
+  const { user } = useAuth();
+
+  const { data: workouts = [] } = useQuery({
+    queryKey: ['student-workouts', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      const workoutsRef = collection(db, 'workouts');
+      const q = query(workoutsRef, where('studentId', '==', user.id));
+      const querySnapshot = await getDocs(q);
+      
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Workout[];
+    }
+  });
+
+  const handleNewEvaluation = async () => {
+    try {
+      if (!user?.id || !user?.trainerId) {
+        toast.error('Erro ao solicitar avaliação: usuário não encontrado');
+        return;
+      }
+
+      const tasksRef = collection(db, 'tasks');
+      const taskData = {
+        type: 'evaluation',
+        studentId: user.id,
+        studentName: user.name,
+        trainerId: user.trainerId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        description: 'Solicitação de nova avaliação física',
+        priority: 'high',
+        title: 'Nova Avaliação Física'
+      };
+
+      const docRef = await addDoc(tasksRef, taskData);
+      console.log('Tarefa criada com sucesso:', docRef.id);
+      toast.success('Solicitação de avaliação enviada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao criar tarefa:', error);
+      toast.error('Erro ao solicitar avaliação. Tente novamente.');
+    }
+  };
+
+  const getDaysTrainedThisMonth = () => {
+    const today = new Date();
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    const uniqueDays = new Set(
+      workouts
+        .filter(w => w.status === 'completed' && w.completedAt)
+        .map(w => {
+          const completedDate = w.completedAt.toDate();
+          return completedDate >= startOfMonth && completedDate <= endOfMonth
+            ? completedDate.toISOString().split('T')[0]
+            : null;
+        })
+        .filter(Boolean)
+    );
+
+    return uniqueDays.size;
+  };
+
   // Dados fictícios para exemplo
   const metrics = {
     weight: 78,
@@ -51,7 +140,7 @@ const ProgressPage = () => {
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Progresso</h1>
-        <Button>
+        <Button onClick={handleNewEvaluation}>
           <Activity className="mr-2 h-4 w-4" />
           Nova Avaliação
         </Button>
@@ -105,6 +194,21 @@ const ProgressPage = () => {
           <CardContent>
             <div className="text-2xl font-bold">{metrics.bodyFat}%</div>
             <Progress value={metrics.bodyFat} className="mt-2" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Dias Treinados no Mês</CardTitle>
+            <Dumbbell className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="text-2xl font-bold">{getDaysTrainedThisMonth()}</div>
+              <Badge variant="secondary">
+                {getDaysTrainedThisMonth()} dias
+              </Badge>
+            </div>
           </CardContent>
         </Card>
       </div>

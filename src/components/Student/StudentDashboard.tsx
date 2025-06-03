@@ -1,28 +1,82 @@
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, FileText, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Calendar, FileText, Users, CheckCircle2, Clock } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { toast } from 'sonner';
+
+interface Workout {
+  id: string;
+  title: string;
+  description: string;
+  exercises: string;
+  createdAt: any;
+  status: 'pending' | 'completed';
+  createdBy: string;
+}
 
 const StudentDashboard = () => {
-  const weekProgress = 4; // 4 treinos completados de 5
+  const { user } = useAuth();
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [weekProgress, setWeekProgress] = useState(0);
   const weekGoal = 5;
-  const progressPercentage = (weekProgress / weekGoal) * 100;
 
-  const todayWorkout = {
-    name: "Treino de Pernas",
-    exercises: ["Agachamento", "Leg Press", "Cadeira Extensora"],
-    duration: 60
+  useEffect(() => {
+    const fetchWorkouts = async () => {
+      if (!user) return;
+
+      try {
+        setIsLoading(true);
+        const workoutsRef = collection(db, 'workouts');
+        const q = query(workoutsRef, where('studentId', '==', user.id));
+        const querySnapshot = await getDocs(q);
+        
+        const workoutsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as Workout[];
+
+        setWorkouts(workoutsData);
+        
+        // Calcular progresso semanal
+        const completedWorkouts = workoutsData.filter(w => w.status === 'completed').length;
+        setWeekProgress(completedWorkouts);
+      } catch (error) {
+        console.error('Erro ao buscar treinos:', error);
+        toast.error('Erro ao carregar treinos');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchWorkouts();
+  }, [user]);
+
+  const handleCompleteWorkout = async (workoutId: string) => {
+    try {
+      const workoutRef = doc(db, 'workouts', workoutId);
+      await updateDoc(workoutRef, {
+        status: 'completed'
+      });
+
+      setWorkouts(prev => prev.map(w => 
+        w.id === workoutId ? { ...w, status: 'completed' } : w
+      ));
+      
+      setWeekProgress(prev => prev + 1);
+      toast.success('Treino marcado como concluído!');
+    } catch (error) {
+      console.error('Erro ao atualizar treino:', error);
+      toast.error('Erro ao marcar treino como concluído');
+    }
   };
 
-  const todayMeals = [
-    { name: "Café da Manhã", calories: 350, completed: true },
-    { name: "Lanche da Manhã", calories: 150, completed: true },
-    { name: "Almoço", calories: 600, completed: false },
-    { name: "Lanche da Tarde", calories: 200, completed: false },
-    { name: "Jantar", calories: 550, completed: false }
-  ];
+  const progressPercentage = (weekProgress / weekGoal) * 100;
 
   return (
     <div className="space-y-6 p-6">
@@ -58,58 +112,63 @@ const StudentDashboard = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Users className="mr-2 h-5 w-5 text-pink-500" />
+              <Users className="mr-2 h-5 w-5 text-blue-500" />
               Treino de Hoje
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div>
-                <h3 className="font-semibold">{todayWorkout.name}</h3>
-                <p className="text-sm text-gray-500">{todayWorkout.duration} minutos</p>
+            {isLoading ? (
+              <div className="text-center py-4">Carregando treinos...</div>
+            ) : workouts.length === 0 ? (
+              <div className="text-center py-4 text-gray-500">
+                <Calendar className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                <p>Nenhum treino disponível</p>
+                <p className="text-sm text-gray-400 mt-1">Seu professor ainda não criou treinos para você</p>
               </div>
-              <div className="space-y-1">
-                {todayWorkout.exercises.map((exercise, index) => (
-                  <Badge key={index} variant="secondary" className="mr-1">
-                    {exercise}
-                  </Badge>
+            ) : (
+              <div className="space-y-4">
+                {workouts.map((workout) => (
+                  <div key={workout.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <p className="font-medium text-lg">{workout.title}</p>
+                        <p className="text-sm text-gray-500">{workout.description}</p>
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Calendar className="h-4 w-4 mr-1" />
+                          <span>Criado em: {new Date(workout.createdAt?.toDate()).toLocaleDateString('pt-BR')}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end space-y-2">
+                        <Badge variant={workout.status === 'pending' ? 'secondary' : 'default'}>
+                          {workout.status === 'pending' ? 'Pendente' : 'Concluído'}
+                        </Badge>
+                        {workout.status === 'pending' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCompleteWorkout(workout.id)}
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Marcar como Concluído
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium mb-2">Exercícios:</h4>
+                      <div className="bg-gray-50 p-3 rounded-md">
+                        <pre className="text-sm whitespace-pre-wrap">{workout.exercises}</pre>
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Dieta do Dia */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <FileText className="mr-2 h-5 w-5 text-green-500" />
-              Dieta de Hoje
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {todayMeals.map((meal, index) => (
-                <div key={index} className="flex justify-between items-center text-sm">
-                  <span className={meal.completed ? "line-through text-gray-500" : ""}>
-                    {meal.name}
-                  </span>
-                  <span className="text-gray-500">{meal.calories} cal</span>
-                </div>
-              ))}
-              <div className="pt-2 border-t">
-                <div className="flex justify-between font-semibold">
-                  <span>Total do Dia</span>
-                  <span>1,850 cal</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Streak e Conquistas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Streak e Conquistas */}
         <Card>
           <CardHeader>
             <CardTitle>🔥 Sequência Atual</CardTitle>
@@ -123,34 +182,6 @@ const StudentDashboard = () => {
                 {[...Array(7)].map((_, i) => (
                   <div key={i} className="w-3 h-3 bg-orange-500 rounded-full"></div>
                 ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>🏆 Conquistas Recentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
-                  🥇
-                </div>
-                <div>
-                  <p className="font-medium">Primeira Semana</p>
-                  <p className="text-sm text-gray-500">Completou 5 treinos</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  💪
-                </div>
-                <div>
-                  <p className="font-medium">Força Crescente</p>
-                  <p className="text-sm text-gray-500">Aumentou peso em 3 exercícios</p>
-                </div>
               </div>
             </div>
           </CardContent>
