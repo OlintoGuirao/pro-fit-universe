@@ -67,7 +67,7 @@ const Index = () => {
   if (!user) {
     return (
       <div className="container mx-auto py-8">
-        <Card className="max-w-md mx-auto">
+        <Card className="max-w-md mx-auto border-0 shadow-none">
           <CardHeader>
             <CardTitle className="text-center">Login</CardTitle>
           </CardHeader>

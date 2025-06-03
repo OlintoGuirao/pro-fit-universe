@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Users, Calendar, FileText, Bell } from 'lucide-react';
+import { Users, Calendar, FileText, Bell, Copy } from 'lucide-react';
 import AIChat from './AIChat';
 import { useAuth } from '@/contexts/AuthContext';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, setDoc, onSnapshot, orderBy } from 'firebase/firestore';
@@ -40,6 +40,7 @@ import { TrainerProfile } from './TrainerProfile';
 interface Student {
   id: string;
   name: string;
+  email?: string;
   goal?: string;
   lastWorkout?: string;
   progress?: number;
@@ -99,6 +100,32 @@ const TrainerDashboard = () => {
   const [isLoadingWorkouts, setIsLoadingWorkouts] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
 
+  // Dados de exemplo para os rankings
+  const topStudents = [
+    { id: '1', name: 'João Silva', completedWorkouts: 15 },
+    { id: '2', name: 'Maria Santos', completedWorkouts: 12 },
+    { id: '3', name: 'Pedro Oliveira', completedWorkouts: 10 },
+    { id: '4', name: 'Ana Costa', completedWorkouts: 8 },
+    { id: '5', name: 'Lucas Ferreira', completedWorkouts: 7 }
+  ];
+
+  const topExercises = [
+    { id: '1', name: 'Supino Reto', usageCount: 45 },
+    { id: '2', name: 'Agachamento', usageCount: 42 },
+    { id: '3', name: 'Levantamento Terra', usageCount: 38 },
+    { id: '4', name: 'Rosca Direta', usageCount: 35 },
+    { id: '5', name: 'Puxada Frontal', usageCount: 32 }
+  ];
+
+  const handleCopyTrainerCode = () => {
+    if (user?.trainerCode) {
+      navigator.clipboard.writeText(user.trainerCode);
+      toast.success('Código do professor copiado com sucesso!');
+    } else {
+      toast.error('Código do professor não encontrado');
+    }
+  };
+
   const { data: tasks = [] } = useQuery({
     queryKey: ['trainer-tasks', user?.id],
     queryFn: async () => {
@@ -135,12 +162,18 @@ const TrainerDashboard = () => {
 
     // Configurar listener para atualizações em tempo real dos alunos
     const studentsRef = collection(db, 'users');
-    const q = query(studentsRef, where('trainerId', '==', user.id), where('level', '==', 1));
+    const q = query(
+      studentsRef, 
+      where('trainerId', '==', user.id), 
+      where('level', '==', 1),
+      where('pendingTrainerApproval', '==', false)
+    );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const studentsData = snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name || '',
+        email: doc.data().email || '',
         goal: doc.data().goal || '',
         lastWorkout: doc.data().lastWorkout || '',
         progress: doc.data().progress || 0,
@@ -367,6 +400,7 @@ const TrainerDashboard = () => {
       const studentsData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().name || '',
+        email: doc.data().email || '',
         goal: doc.data().goal || '',
         lastWorkout: doc.data().lastWorkout || '',
         progress: doc.data().progress || 0,
@@ -394,443 +428,135 @@ const TrainerDashboard = () => {
   };
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <TrainerProfile />
-      <StudentRequests />
-      <StudentLimitAlert />
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard do Personal</h1>
-        <p className="text-gray-600 mt-2">Gerencie seus alunos e acompanhe o progresso de cada um</p>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="space-y-4">
+        <h2 className="text-2xl font-bold text-primary">Dashboard do Professor</h2>
+        <div className="bg-muted/50 border border-primary/20 px-4 py-3 rounded-md flex items-center gap-2 w-fit">
+          <span className="text-sm text-muted-foreground">Código do Professor:</span>
+          <span className="font-bold text-lg tracking-wider text-primary">{user?.trainerCode || 'Não disponível'}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCopyTrainerCode}
+            className="h-6 w-6 p-0 hover:bg-primary/10"
+          >
+            <Copy className="h-4 w-4 text-primary" />
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total de Alunos</CardTitle>
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
+            <Users className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.totalStudents}</div>
-            <p className="text-xs text-gray-500">de 5 permitidos</p>
+            <div className="text-2xl font-bold text-primary">{stats.totalStudents}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.activeStudents} alunos ativos
+            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Alunos Ativos</CardTitle>
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tarefas Pendentes</CardTitle>
+            <FileText className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.activeStudents}</div>
-            <p className="text-xs text-gray-500">treinaram esta semana</p>
+            <div className="text-2xl font-bold text-primary">{stats.pendingTasks}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.pendingTasks === 0 ? 'Nenhuma tarefa pendente' : 'Tarefas aguardando ação'}
+            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Tarefas Pendentes</CardTitle>
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avaliação Média</CardTitle>
+            <Bell className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600">{stats.pendingTasks}</div>
-            <p className="text-xs text-gray-500">requerem atenção</p>
+            <div className="text-2xl font-bold text-primary">{stats.averageRating}</div>
+            <p className="text-xs text-muted-foreground">
+              Baseado em {stats.totalStudents} avaliações
+            </p>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Avaliação Média</CardTitle>
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Próximos Eventos</CardTitle>
+            <Calendar className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-purple-600">{stats.averageRating}</div>
-            <p className="text-xs text-gray-500">⭐⭐⭐⭐⭐</p>
+            <div className="text-2xl font-bold text-primary">0</div>
+            <p className="text-xs text-muted-foreground">
+              Eventos agendados para hoje
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Lista de Alunos */}
-        <Card>
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 md:grid-cols-2">
+        <Card className="bg-card hover:bg-card/80 transition-colors">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <Users className="mr-2 h-5 w-5 text-green-500" />
+            <CardTitle className="flex items-center text-primary">
+              <Users className="mr-2 h-5 w-5 text-primary" />
               Meus Alunos
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {isLoadingWorkouts ? (
-                <div className="text-center py-4">Carregando alunos...</div>
-              ) : students.length === 0 ? (
-                <div className="text-center py-4 text-gray-500">Nenhum aluno cadastrado</div>
-              ) : (
-                students.map((student) => (
-                  <div key={`list-${student.id}`} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="relative">
-                        <Avatar className="h-10 w-10">
-                          {student.photoURL ? (
-                            <AvatarImage src={student.photoURL} />
-                          ) : (
-                            <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
-                          )}
-                        </Avatar>
-                        <span 
-                          className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white ${
-                            student.isOnline ? 'bg-green-500' : 'bg-gray-400'
-                          }`}
-                        />
-                      </div>
-                      <div>
-                        <p className="font-medium">{student.name}</p>
-                        <p className="text-sm text-gray-500">{student.goal}</p>
-                        {!student.isOnline && student.lastSeen && (
-                          <p className="text-xs text-gray-400">
-                            Visto por último: {new Date(student.lastSeen.toDate()).toLocaleString('pt-BR')}
-                          </p>
-                        )}
-                      </div>
+              {students.map((student) => (
+                <div key={student.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className="relative">
+                      <Avatar className="h-10 w-10 border-2 border-primary/20">
+                        <AvatarImage src={student.photoURL} />
+                        <AvatarFallback className="bg-primary/10 text-primary">
+                          {student.name.split(' ').map(n => n[0]).join('')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white ${student.isOnline ? 'bg-green-500' : 'bg-muted'}`}></span>
                     </div>
-                    <div className="text-right">
-                      <Badge variant={student.active ? "default" : "secondary"}>
-                        {student.progress}%
-                      </Badge>
-                      <p className="text-xs text-gray-500 mt-1">{student.lastWorkout}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    <Users className="mr-2 h-4 w-4" />
-                    Adicionar Novo Aluno
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Cadastrar Novo Aluno</DialogTitle>
-                    <DialogDescription>
-                      Preencha os dados do novo aluno. Ele será automaticamente vinculado a você.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="name">Nome do Aluno</Label>
-                      <Input
-                        id="name"
-                        value={newStudent.name}
-                        onChange={(e) => setNewStudent(prev => ({ ...prev, name: e.target.value }))}
-                        placeholder="Nome completo"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={newStudent.email}
-                        onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
-                        placeholder="email@exemplo.com"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="password">Senha</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={newStudent.password}
-                        onChange={(e) => setNewStudent(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="Mínimo 6 caracteres"
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      onClick={handleCreateStudent}
-                      disabled={isCreatingStudent}
-                    >
-                      {isCreatingStudent ? 'Cadastrando...' : 'Cadastrar Aluno'}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Chat com IA */}
-        <AIChat />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Lista de Treinos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Calendar className="mr-2 h-5 w-5 text-blue-500" />
-                Treinos Criados
-              </div>
-              <Badge variant="outline" className="text-sm">
-                {workouts.length} {workouts.length === 1 ? 'treino' : 'treinos'}
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {isLoadingWorkouts ? (
-                <div className="text-center py-4">Carregando treinos...</div>
-              ) : workouts.length === 0 ? (
-                <div className="text-center py-4 text-gray-500">
-                  <Calendar className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                  <p>Nenhum treino criado ainda</p>
-                  <p className="text-sm text-gray-400 mt-1">Crie seu primeiro treino usando o botão abaixo</p>
-                </div>
-              ) : (
-                workouts.map((workout) => (
-                  <div key={workout.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex justify-between items-start">
-                      <div className="space-y-1">
-                        <p className="font-medium text-lg">{workout.title}</p>
-                        <div className="flex items-center text-sm text-gray-500">
-                          <Users className="h-4 w-4 mr-1" />
-                          <span>Para: {workout.studentName}</span>
-                        </div>
-                        <div className="flex items-center text-sm text-gray-500">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          <span>Criado em: {new Date(workout.createdAt?.toDate()).toLocaleDateString('pt-BR')}</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end space-y-2">
-                        <Badge variant={workout.status === 'pending' ? 'secondary' : 'default'}>
-                          {workout.status === 'pending' ? 'Pendente' : 'Concluído'}
-                        </Badge>
-                        <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
-                          Ver detalhes
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tarefas Pendentes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Bell className="mr-2 h-5 w-5 text-orange-500" />
-              Tarefas Pendentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {tasks.length === 0 ? (
-                <div className="text-center py-4 text-gray-500">
-                  Nenhuma tarefa pendente
-                </div>
-              ) : (
-                tasks.map((task) => (
-                  <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div>
-                      <h4 className="font-medium">{task.studentName}</h4>
-                      <p className="text-sm text-gray-500">{task.description}</p>
-                      <p className="text-xs text-gray-400">
-                        {task.createdAt?.toDate().toLocaleDateString('pt-BR')}
+                      <p className="font-medium text-primary">{student.name}</p>
+                      <p className="text-sm text-muted-foreground">{student.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Visto por último: {student.lastSeen ? new Date(student.lastSeen.toDate()).toLocaleString() : 'Nunca'}
                       </p>
                     </div>
-                    <Badge variant={task.priority === 'high' ? 'destructive' : 'secondary'}>
-                      {task.priority === 'high' ? 'Alta' : 'Média'}
-                    </Badge>
                   </div>
-                ))
-              )}
+                  <div className="text-right">
+                    <Badge className="bg-primary/10 text-primary hover:bg-primary/20">{student.progress || 0}%</Badge>
+                    <p className="text-xs text-muted-foreground mt-1">{student.goal || 'Sem objetivo definido'}</p>
+                  </div>
+                </div>
+              ))}
+              <Button 
+                className="w-full bg-primary hover:bg-primary/90"
+                onClick={() => setShowCalendar(true)}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Adicionar Novo Aluno
+              </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card hover:bg-card/80 transition-colors">
+          <CardHeader>
+            <CardTitle className="flex items-center text-primary">
+              <Bell className="mr-2 h-5 w-5 text-primary" />
+              Solicitações Pendentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StudentRequests />
           </CardContent>
         </Card>
       </div>
 
-      {/* Templates Rápidos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <FileText className="mr-2 h-5 w-5 text-purple-500" />
-            Ações Rápidas
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="h-20 flex flex-col">
-                  <Calendar className="h-6 w-6 mb-2" />
-                  Criar Treino
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Criar Novo Treino</DialogTitle>
-                  <DialogDescription>
-                    Preencha os detalhes do treino para seu aluno.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="student">Aluno</Label>
-                    <Select
-                      value={selectedStudent}
-                      onValueChange={setSelectedStudent}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um aluno" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {students.map((student) => (
-                          <SelectItem key={`select-${student.id}`} value={student.id}>
-                            {student.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="title">Título do Treino</Label>
-                    <Textarea
-                      id="title"
-                      value={workoutTitle}
-                      onChange={(e) => setWorkoutTitle(e.target.value)}
-                      placeholder="Ex: Treino A - Peito e Tríceps"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Descrição (opcional)</Label>
-                    <Textarea
-                      id="description"
-                      value={workoutDescription}
-                      onChange={(e) => setWorkoutDescription(e.target.value)}
-                      placeholder="Ex: Foco em hipertrofia com exercícios compostos"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="exercises">Exercícios</Label>
-                    <Textarea
-                      id="exercises"
-                      value={workoutExercises}
-                      onChange={(e) => setWorkoutExercises(e.target.value)}
-                      placeholder="Ex: Supino Reto - 4x12
-Leg Press - 4x15
-Extensão de Pernas - 3x20"
-                      className="h-[200px]"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={handleCreateWorkout}
-                    disabled={isCreatingWorkout}
-                  >
-                    {isCreatingWorkout ? 'Criando...' : 'Criar e Enviar Treino'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="h-20 flex flex-col">
-                  <FileText className="h-6 w-6 mb-2" />
-                  Criar Dieta
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle>Criar Nova Dieta</DialogTitle>
-                  <DialogDescription>
-                    Preencha os detalhes da dieta para seu aluno.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="student">Aluno</Label>
-                    <Select
-                      value={selectedStudent}
-                      onValueChange={setSelectedStudent}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um aluno" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {students.map((student) => (
-                          <SelectItem key={`select-${student.id}`} value={student.id}>
-                            {student.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="title">Título da Dieta</Label>
-                    <Textarea
-                      id="title"
-                      value={dietTitle}
-                      onChange={(e) => setDietTitle(e.target.value)}
-                      placeholder="Ex: Dieta para Hipertrofia"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Descrição (opcional)</Label>
-                    <Textarea
-                      id="description"
-                      value={dietDescription}
-                      onChange={(e) => setDietDescription(e.target.value)}
-                      placeholder="Ex: Foco em ganho de massa muscular"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="meals">Refeições</Label>
-                    <Textarea
-                      id="meals"
-                      value={dietMeals}
-                      onChange={(e) => setDietMeals(e.target.value)}
-                      placeholder="Café da Manhã:
-- Ovos (2 unidades)
-- Banana (1 unidade)
-- Leite (250ml)
-
-Almoço:
-- Frango (150g)
-- Arroz (50g)
-- Salada (à vontade)
-
-Jantar:
-- Peixe (100g)
-- Batata (50g)
-- Legumes (à vontade)
-
-Lanche:
-- Iogurte (100g)
-- Maçã (1 unidade)"
-                      className="h-[400px]"
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={handleCreateDiet}
-                    disabled={isCreatingDiet}
-                  >
-                    {isCreatingDiet ? 'Criando...' : 'Criar e Enviar Dieta'}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Button variant="outline" className="h-20 flex flex-col">
-              <Users className="h-6 w-6 mb-2" />
-              Enviar Feedback
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <AIChat />
     </div>
   );
 };

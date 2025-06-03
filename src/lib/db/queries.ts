@@ -248,14 +248,35 @@ export const associateStudentWithTrainer = async (studentId: string, trainerId: 
 // Função para buscar professor de um aluno
 export const getTrainerByStudent = async (studentId: string) => {
   try {
-    const q = query(collection(db, 'users'), where('students', 'array-contains', studentId));
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      name: doc.data().name || 'Professor',
-      avatar: doc.data().avatar || null,
-      ...doc.data()
-    }));
+    // Primeiro, buscar o documento do aluno para obter o trainerId
+    const studentDoc = await getDoc(doc(db, 'users', studentId));
+    if (!studentDoc.exists()) {
+      console.error('Aluno não encontrado');
+      return [];
+    }
+
+    const studentData = studentDoc.data();
+    const trainerId = studentData.trainerId;
+
+    if (!trainerId) {
+      console.log('Aluno não tem professor vinculado');
+      return [];
+    }
+
+    // Buscar o documento do professor
+    const trainerDoc = await getDoc(doc(db, 'users', trainerId));
+    if (!trainerDoc.exists()) {
+      console.error('Professor não encontrado');
+      return [];
+    }
+
+    const trainerData = trainerDoc.data();
+    return [{
+      id: trainerDoc.id,
+      name: trainerData.name || 'Professor',
+      avatar: trainerData.avatar || null,
+      ...trainerData
+    }];
   } catch (error) {
     console.error('Erro ao buscar professor:', error);
     return [];
@@ -282,7 +303,7 @@ export const getStudentsByTrainer = async (trainerId: string) => {
 // Função para escutar mensagens em tempo real entre dois usuários
 export const subscribeToMessages = (userId1: string, userId2: string, callback: (messages: any[]) => void) => {
   try {
-    console.log('Iniciando subscrição de mensagens entre:', userId1, userId2);
+    console.log('Iniciando escuta de mensagens entre:', userId1, userId2);
     
     const messagesCollection = collection(db, 'messages');
     const q = query(
@@ -292,38 +313,27 @@ export const subscribeToMessages = (userId1: string, userId2: string, callback: 
       orderBy('createdAt', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, 
-      (querySnapshot) => {
-        try {
-          console.log('Novas mensagens recebidas:', querySnapshot.size);
-          const messages = querySnapshot.docs.map(doc => {
-            const data = doc.data();
-            console.log('Dados da mensagem:', data);
-            return {
-              id: doc.id,
-              senderId: data.senderId,
-              receiverId: data.receiverId,
-              content: data.content,
-              isRead: data.isRead,
-              createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-            };
-          });
-          console.log('Mensagens processadas:', messages);
-          callback(messages);
-        } catch (error) {
-          console.error('Erro ao processar mensagens:', error);
-          callback([]);
-        }
-      },
-      (error) => {
-        console.error('Erro na subscrição de mensagens:', error);
-        callback([]);
-      }
-    );
+    return onSnapshot(q, (snapshot) => {
+      const messages = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          senderId: data.senderId,
+          receiverId: data.receiverId,
+          content: data.content,
+          isRead: data.isRead,
+          createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+        };
+      });
 
-    return unsubscribe;
+      // Ordenar mensagens por data (mais antigas primeiro)
+      messages.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      
+      console.log('Novas mensagens recebidas:', messages);
+      callback(messages);
+    });
   } catch (error) {
-    console.error('Erro ao configurar subscrição de mensagens:', error);
+    console.error('Erro ao configurar escuta de mensagens:', error);
     return () => {};
   }
 };

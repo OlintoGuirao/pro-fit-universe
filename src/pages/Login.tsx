@@ -1,9 +1,51 @@
 import { LoginForm } from '@/components/Auth/LoginForm';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dumbbell, ArrowRight } from 'lucide-react';
+import { Dumbbell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { ArrowRight } from 'lucide-react';
 
 export default function Login() {
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const formData = new FormData(e.target as HTMLFormElement);
+    const email = formData.get('email') as string;
+    const password = formData.get('password') as string;
+
+    try {
+      await login(email, password);
+      toast.success('Login realizado com sucesso!');
+      window.location.href = '/';
+    } catch (error: any) {
+      console.error('Erro ao fazer login:', error);
+      
+      let message = 'Erro ao fazer login. Tente novamente.';
+      
+      if (error.code === 'auth/user-not-found') {
+        message = 'Usuário não encontrado.';
+      } else if (error.code === 'auth/wrong-password') {
+        message = 'Senha incorreta.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Email inválido.';
+      }
+      
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex">
       {/* Lado esquerdo - Imagem de fundo */}
@@ -36,23 +78,53 @@ export default function Login() {
 
           <Card className="border-0 shadow-none">
             <CardContent className="p-0">
-              <LoginForm />
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Senha</Label>
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+
+                <div className="text-center">
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? 'Entrando...' : 'Entrar'}
+                  </Button>
+                </div>
+
+                <div className="text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Não tem uma conta?{' '}
+                    <Button
+                      variant="link"
+                      onClick={() => window.location.href = '/register'}
+                      className="p-0 h-auto font-medium"
+                    >
+                      Criar conta
+                      <ArrowRight className="ml-1 h-4 w-4" />
+                    </Button>
+                  </p>
+                </div>
+              </form>
             </CardContent>
           </Card>
-
-          <div className="text-center">
-            <p className="text-sm text-gray-600">
-              Não tem uma conta?{' '}
-              <Button 
-                variant="link" 
-                className="p-0 h-auto text-blue-600 hover:text-blue-800 font-medium inline-flex items-center"
-                onClick={() => window.location.href = '/register'}
-              >
-                Criar conta
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </p>
-          </div>
         </div>
       </div>
     </div>

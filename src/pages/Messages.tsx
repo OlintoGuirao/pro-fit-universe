@@ -80,46 +80,28 @@ const Messages = () => {
 
     const setupMessages = async () => {
       try {
-        console.log('Iniciando escuta de mensagens entre:', user.id, selectedUser.id);
-        
-        // Carregar mensagens existentes primeiro
-        const existingMessages = await getMessagesBetweenUsers(user.id, selectedUser.id);
-        console.log('Mensagens existentes carregadas:', existingMessages);
-        setMessages(existingMessages);
-        
-        // Marcar mensagens como lidas
-        if (user.level === 1) {
-          await markMessagesAsRead(selectedUser.id, user.id);
-        } else {
-          await markMessagesAsRead(selectedUser.id, user.id);
-        }
+        // Carregar mensagens iniciais
+        const initialMessages = await getMessagesBetweenUsers(user.id, selectedUser.id);
+        setMessages(initialMessages);
 
-        // Escutar mensagens em tempo real
+        // Configurar listener em tempo real
         unsubscribe = subscribeToMessages(user.id, selectedUser.id, (newMessages) => {
           console.log('Novas mensagens recebidas:', newMessages);
-          if (Array.isArray(newMessages)) {
-            // Usar um Map para garantir que não haja duplicatas
-            const messageMap = new Map();
-            
-            // Adicionar todas as mensagens ao Map, usando o ID como chave
-            newMessages.forEach(msg => {
-              messageMap.set(msg.id, msg);
-            });
-            
-            // Converter o Map de volta para array e ordenar por data
-            const uniqueMessages = Array.from(messageMap.values()).sort((a, b) => 
-              (a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt)).getTime() - 
-              (b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt)).getTime()
-            );
-            
-            setMessages(uniqueMessages);
-          } else {
-            console.error('Formato inválido de mensagens recebidas:', newMessages);
+          setMessages(newMessages);
+          
+          // Marcar mensagens como lidas
+          if (user.level === 1) {
+            markMessagesAsRead(user.id, selectedUser.id);
           }
         });
+
+        // Marcar mensagens como lidas se for aluno
+        if (user.level === 1) {
+          await markMessagesAsRead(user.id, selectedUser.id);
+        }
       } catch (error) {
         console.error('Erro ao carregar mensagens:', error);
-        alert('Erro ao carregar mensagens. Por favor, tente novamente.');
+        toast.error('Erro ao carregar mensagens. Por favor, tente novamente.');
       }
     };
 
