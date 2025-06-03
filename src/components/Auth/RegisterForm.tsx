@@ -21,10 +21,11 @@ interface Trainer {
 }
 
 interface RegisterFormProps {
-  onBackToLogin?: () => void;
+  onBackToLogin: () => void;
+  setShowRegister: (show: boolean) => void;
 }
 
-export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
+export function RegisterForm({ onBackToLogin, setShowRegister }: RegisterFormProps) {
   const navigate = useNavigate();
   const { register } = useAuth();
   const { addToast } = useToast();
@@ -175,8 +176,8 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
         message: 'Cadastro realizado com sucesso!'
       });
 
-      // Redirecionar para a página inicial
-      navigate('/', { replace: true });
+      // Redirecionar para a página Index
+      window.location.href = '/';
     } catch (error: any) {
       console.error('Erro ao registrar:', error);
       
@@ -202,98 +203,96 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <div className="mx-auto w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center mb-4">
-            <span className="text-white text-2xl">💪</span>
-          </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-xl">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-primary mb-2">
             WordFit
           </h1>
-          <p className="text-gray-600 mt-2">Crie sua conta para começar</p>
+          <p className="text-muted-foreground">
+            Crie sua conta para começar
+          </p>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center space-x-2">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={onBackToLogin}
-                className="p-1"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              onClick={() => window.location.href = '/login'}
+              className="p-2"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <h2 className="text-xl font-semibold text-foreground">
+              Criar Conta
+            </h2>
+            <div className="w-10" />
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-4">
               <div>
-                <CardTitle>Cadastro</CardTitle>
-                <CardDescription>
-                  Preencha os dados para criar sua conta
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
+                <Label htmlFor="name" className="text-sm font-medium mb-1.5 block">Nome</Label>
                 <Input
                   id="name"
                   name="name"
+                  required
                   value={formData.name}
                   onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
+                  className="h-11"
+                  placeholder="Seu nome completo"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+              <div>
+                <Label htmlFor="email" className="text-sm font-medium mb-1.5 block">Email</Label>
                 <Input
                   id="email"
                   name="email"
                   type="email"
+                  required
                   value={formData.email}
                   onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
+                  className="h-11"
+                  placeholder="seu@email.com"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+              <div>
+                <Label htmlFor="password" className="text-sm font-medium mb-1.5 block">Senha</Label>
                 <Input
                   id="password"
                   name="password"
                   type="password"
+                  required
                   value={formData.password}
                   onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
+                  className="h-11"
+                  placeholder="••••••••"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar Senha</Label>
+              <div>
+                <Label htmlFor="confirmPassword" className="text-sm font-medium mb-1.5 block">Confirmar Senha</Label>
                 <Input
                   id="confirmPassword"
                   name="confirmPassword"
                   type="password"
+                  required
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
-                  required
-                  disabled={isLoading}
+                  className="h-11"
+                  placeholder="••••••••"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="role">Tipo de Conta</Label>
+              <div>
+                <Label htmlFor="role" className="text-sm font-medium mb-1.5 block">Tipo de Conta</Label>
                 <Select
                   value={formData.role}
-                  onValueChange={handleRoleChange}
-                  disabled={isLoading}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Selecionar tipo da conta" />
                   </SelectTrigger>
                   <SelectContent>
@@ -304,8 +303,8 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
               </div>
 
               {formData.role === 'student' && (
-                <div className="space-y-2">
-                  <Label htmlFor="trainerCode">Código do Professor (opcional)</Label>
+                <div>
+                  <Label htmlFor="trainerCode" className="text-sm font-medium mb-1.5 block">Código do Professor (opcional)</Label>
                   <div className="relative">
                     <Input
                       id="trainerCode"
@@ -314,24 +313,28 @@ export function RegisterForm({ onBackToLogin }: RegisterFormProps) {
                       onChange={handleInputChange}
                       placeholder="Digite o código do professor"
                       disabled={isLoading}
+                      className="h-11"
                     />
                   </div>
                   {selectedTrainer && (
-                    <p className="text-sm text-green-600">
+                    <p className="text-sm text-green-600 mt-1.5">
                       Professor encontrado! A solicitação será enviada automaticamente.
                     </p>
                   )}
                 </div>
               )}
+            </div>
 
-              <div className="flex flex-col space-y-2">
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Cadastrando...' : 'Cadastrar'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+            <div className="pt-2">
+              <Button 
+                type="submit" 
+                className="w-full h-11 font-medium"
+              >
+                Criar Conta
+              </Button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
