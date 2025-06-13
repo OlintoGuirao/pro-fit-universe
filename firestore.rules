@@ -8,24 +8,28 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function userLevel() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.level;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && userLevel() == 3;
-    }
-
     function isTrainer() {
-      return isAuthenticated() && userLevel() == 2;
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'trainer';
     }
 
     function isStudent() {
-      return isAuthenticated() && userLevel() == 1;
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'student';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isTrainerOfStudent(studentId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(studentId)).data.trainerId == request.auth.uid;
     }
 
     function isStudentTrainer(studentId) {
@@ -45,22 +49,10 @@ service cloud.firestore {
 
     // USERS
     match /users/{userId} {
-      allow read, list, create: if true;
-
-      allow update: if isAuthenticated() && (
-        isAdmin() || isOwner(userId) || (isTrainer() && isStudentTrainer(userId))
-      );
-
-      allow delete: if isAuthenticated() && isAdmin();
-
-      // Permite listagem de solicitações pendentes do treinador
-      allow list: if isAuthenticated() &&
-        request.query.limit <= 10 &&
-        request.query.filters.size() == 2 &&
-        request.query.filters[0].field == 'trainerId' &&
-        request.query.filters[0].value == request.auth.uid &&
-        request.query.filters[1].field == 'pendingTrainerApproval' &&
-        request.query.filters[1].value == true;
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // MESSAGES
@@ -84,59 +76,42 @@ service cloud.firestore {
 
     // DIETS
     match /diets/{dietId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.trainerId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
+      );
+      allow create: if isTrainer();
+      allow update: if isTrainer() && resource.data.trainerId == request.auth.uid;
+      allow delete: if isTrainer() && resource.data.trainerId == request.auth.uid;
     }
 
     // WORKOUTS
     match /workouts/{workoutId} {
-      allow read: if isAuthenticated();
-
-      allow list: if isAuthenticated() &&
-        request.query.filters.size() == 3 &&
-        request.query.filters[0].field == 'createdBy' &&
-        request.query.filters[0].value == request.auth.uid &&
-        request.query.filters[1].field == 'createdAt' &&
-        request.query.filters[2].field == '__name__';
-
-      allow create: if isAuthenticated() &&
-        request.resource.data.createdBy == request.auth.uid;
-
-      allow update: if isAuthenticated() && (
-        resource.data.createdBy == request.auth.uid ||
-        isStudentTrainer(resource.data.studentId) ||
-        (resource.data.studentId == request.auth.uid &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['status', 'workoutTime', 'completedAt', 'completedDate', 'completedExercises']))
+      allow read: if isAuthenticated() && (
+        resource.data.trainerId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid ||
+        isTrainerOfStudent(resource.data.studentId)
       );
-
-      allow delete: if isAuthenticated() && (
-        resource.data.createdBy == request.auth.uid || isAdmin()
+      allow create: if isTrainer();
+      allow update: if isTrainer() && (
+        resource.data.trainerId == request.auth.uid ||
+        request.resource.data.trainerId == request.auth.uid
+      );
+      allow delete: if isTrainer() && (
+        resource.data.trainerId == request.auth.uid ||
+        request.resource.data.trainerId == request.auth.uid
       );
     }
 
     // TASKS
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid ||
         resource.data.trainerId == request.auth.uid ||
-        isAdmin()
+        resource.data.studentId == request.auth.uid
       );
-
-      allow create: if isAuthenticated() && (
-        isTrainer() ||
-        (isStudent() && request.resource.data.type == 'evaluation' &&
-         request.resource.data.studentId == request.auth.uid)
-      );
-
-      allow update: if isAuthenticated() && (
-        resource.data.trainerId == request.auth.uid ||
-        resource.data.studentId == request.auth.uid ||
-        isAdmin()
-      );
-
-      allow delete: if isAuthenticated() && (
-        resource.data.trainerId == request.auth.uid || isAdmin()
-      );
+      allow create: if isTrainer();
+      allow update: if isTrainer() && resource.data.trainerId == request.auth.uid;
+      allow delete: if isTrainer() && resource.data.trainerId == request.auth.uid;
     }
 
     // SUGGESTIONS
@@ -194,14 +169,13 @@ service cloud.firestore {
 
     // NOTIFICATIONS
     match /notifications/{notificationId} {
-      allow read, update: if isAuthenticated() &&
-        resource.data.userId == request.auth.uid;
-
-      allow create: if isAuthenticated();
-
-      allow delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || isAdmin()
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.trainerId == request.auth.uid
       );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     // METRICS
@@ -222,12 +196,30 @@ service cloud.firestore {
     // EVALUATIONS
     match /evaluations/{evaluationId} {
       allow read: if isAuthenticated() && (
-        resource.data.studentId == request.auth.uid ||
-        resource.data.trainerId == request.auth.uid
+        resource.data.trainerId == request.auth.uid ||
+        resource.data.studentId == request.auth.uid
       );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isTrainer() && resource.data.trainerId == request.auth.uid;
+    }
 
-      allow create, update, delete: if isTrainer() &&
-        resource.data.trainerId == request.auth.uid;
+    // MEASUREMENTS
+    match /measurements/{measurementId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.studentId) || 
+        isOwner(resource.data.trainerId)
+      );
+      allow create: if isStudent() && 
+        request.resource.data.studentId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.studentId) || 
+        isOwner(resource.data.trainerId)
+      );
+      allow delete: if isAuthenticated() && (
+        isOwner(resource.data.studentId) || 
+        isOwner(resource.data.trainerId)
+      );
     }
   }
 }
